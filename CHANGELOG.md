@@ -2,6 +2,25 @@
 
 遵循 [SemVer](https://semver.org/lang/zh-CN/)。每个版本都对应一组 CI 绿了的提交。
 
+## [0.2.4] — 2026-10-26
+
+### 新增
+- **11 种交互形式**（原 7 种 + 驱赶 / 召唤 / 书写 / 仪式），全部进帮助面板
+- **入场三步引导**：首访出现，4.5 秒或首次交互消失，localStorage 记住
+- **场景缩略图**：6px 圆点 → 26×18 真实小图
+- **状态进 URL**：`?mode=&scene=&style=&form(s)=&delay=` 一键分享整套配置
+- `docs/REVIEW.md`：10 条代码审核清单 + 每次审核记录（含 CI 连红的复盘）
+
+### 修复
+- 首帧崩溃（形式层状态字段没插进 `S{}`）
+- 默认模式误判为 multi（COARSE ≠ 多点触控）
+- `changeScene` 早期调用（画布未建好）导致 drawImage 类型错误
+- `applyPreset` 在 `wall:false` 时没移除 `body.wall`
+- 三语 304 键双向对齐
+
+### 测试
+- 断言 166 → **250**；创作软件自检 11 条（OSC / Art-Net / MQTT payload / Blender）
+
 ## [0.2.3] — 2026-10-21
 
 ### 新增
