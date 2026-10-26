@@ -503,8 +503,9 @@ html[lang^="zh-TW"] .ui-row .lbl{font-family:var(--serif-tc)}
 }
 .scene-nav.show{opacity:1}
 .scene-dot{
-  width:6px;height:6px;border-radius:50%;
-  background:var(--warm-silver);
+  width:26px;height:18px;border-radius:3px;
+  background:var(--warm-silver) center/cover no-repeat;
+  border:1px solid rgba(0,0,0,.10);
   transition:all .35s var(--easing-out);
   position:relative;cursor:pointer;
 }
@@ -520,7 +521,8 @@ html[lang^="zh-TW"] .ui-row .lbl{font-family:var(--serif-tc)}
 .scene-dot:hover::after{opacity:1;transform:translateX(-50%) translateY(0)}
 .scene-dot:hover{transform:scale(1.35)}
 .scene-dot.active{
-  background:var(--clay);width:8px;height:8px;
+  width:34px;height:23px;
+  border:2px solid var(--clay);
   box-shadow:0 0 0 3px rgba(201,100,66,.16);
 }
 
@@ -672,6 +674,21 @@ body.wall #ui,body.wall #bar,body.wall .scene-nav,body.wall #first-hint,
 body.wall .credit,body.wall #roster,body.wall #gh,body.wall #glegend,
 body.wall .lang-switch{display:none !important}
 body.wall{cursor:none}
+
+/* 入场三步引导：只在第一次开卷时出现，4.5 秒或首次交互后消失 */
+#onboard{
+  position:fixed;left:50%;bottom:88px;transform:translateX(-50%);z-index:60;
+  display:none;flex-direction:column;gap:7px;align-items:flex-start;
+  background:rgba(251,248,242,.94);border:1px solid var(--cream-border);
+  border-radius:12px;padding:14px 18px;pointer-events:none;
+  box-shadow:0 8px 28px rgba(0,0,0,.10);
+  transition:opacity .5s var(--easing-out);
+}
+#onboard.show{display:flex;animation:fade-up .5s var(--easing-out) both}
+#onboard.hide{opacity:0}
+.ob-step{display:flex;gap:9px;align-items:baseline;font-family:var(--serif);
+  font-size:.78rem;color:var(--stone);letter-spacing:.04em}
+.ob-step b{color:var(--clay);font-size:.7rem;font-weight:600}
 
 /* 首页一句话说明：陌生人不看文档也要知道这是什么 */
 .tagline{
@@ -957,6 +974,13 @@ html[lang^="zh"] .overlay .sheet .sect-h{letter-spacing:.3em;text-transform:none
 
 <!-- ──────── Scene nav ──────── -->
 <div class="scene-nav" id="scene-nav"></div>
+
+<!-- 入场三步：只出现一次（localStorage 记住），任何交互后自动消失 -->
+<div id="onboard" role="status" aria-live="polite">
+  <div class="ob-step"><b>1</b><span data-i18n="ob1">移动鼠标或手指</span></div>
+  <div class="ob-step"><b>2</b><span data-i18n="ob2">光落在哪里，哪里才显色</span></div>
+  <div class="ob-step"><b>3</b><span data-i18n="ob3">按 F 试吹墨 · 按 ? 看全部玩法</span></div>
+</div>
 
 <!-- ──────── Control bar — the only chrome during the piece ──────── -->
 <div id="bar" role="toolbar" aria-label="Controls">
@@ -1381,6 +1405,9 @@ const I18N = {
     formSilence:'静默',
     formDaily:'日课',
     formOffering:'供奉',
+    ob1:'移动鼠标或手指',
+    ob2:'光落在哪里，哪里才显色',
+    ob3:'按 F 试吹墨 · 按 ? 看全部玩法',
     formRepel:'驱赶',
     formSummon:'召唤',
     formWrite:'书写',
@@ -1685,6 +1712,9 @@ const I18N = {
     formSilence:'靜默',
     formDaily:'日課',
     formOffering:'供奉',
+    ob1:'移動滑鼠或手指',
+    ob2:'光落在哪裡，哪裡才顯色',
+    ob3:'按 F 試吹墨 · 按 ? 看全部玩法',
     formRepel:'驅趕',
     formSummon:'召喚',
     formWrite:'書寫',
@@ -1988,6 +2018,9 @@ const I18N = {
     formSilence:'Silence',
     formDaily:'Daily',
     formOffering:'Offering',
+    ob1:'Move the cursor or your finger',
+    ob2:'Colour appears only where the light falls',
+    ob3:'Press F to blow ink · ? for all controls',
     formRepel:'Repel',
     formSummon:'Summon',
     formWrite:'Writing',
@@ -2162,6 +2195,43 @@ const SCENE_COUNT=7;                       // 5 paintings + 1 procedural 3D para
 const STYLE_ORDER=['edges','sketch','dark','paper'];
 const sceneNameOf=(i)=> t(sceneKeys[i]);
 
+/* 把当前状态写进 URL（可直接分享） */
+let _urlT=0;
+let _obT=null;
+function showOnboard(){
+  try{ if(localStorage.getItem('ink-onboard')==='1') return; }catch(e){}
+  const el=document.getElementById('onboard'); if(!el) return;
+  el.classList.add('show');
+  const hide=()=>{
+    if(!el.classList.contains('show')) return;
+    el.classList.add('hide');
+    setTimeout(()=>{ el.classList.remove('show','hide'); }, 520);
+    try{ localStorage.setItem('ink-onboard','1'); }catch(e){}
+    clearTimeout(_obT);
+    D.removeEventListener('pointermove', hide);
+    D.removeEventListener('pointerdown', hide);
+  };
+  _obT=setTimeout(hide, 4500);
+  D.addEventListener('pointermove', hide, {once:true});
+  D.addEventListener('pointerdown', hide, {once:true});
+}
+
+function pushURL(){
+  const now=performance.now(); if(now-_urlT<400) return; _urlT=now;
+  try{
+    const q=new URLSearchParams(location.search);
+    if(S.running){ q.set('mode',S.mode); q.set('scene',String(S.scene)); q.set('style',S.style); }
+    const forms=[];
+    if(S.delayMs) forms.push('delay'); if(S.silence&&S.silence.on) forms.push('silence');
+    if(S.together) forms.push('together'); if(S.daily&&S.daily.on) forms.push('daily');
+    if(S.offering) forms.push('offering'); if(S.repel) forms.push('repel');
+    if(S.summon) forms.push('summon'); if(S.write) forms.push('write'); if(S.ritual) forms.push('ritual');
+    if(forms.length===1) q.set('form',forms[0]); else if(forms.length>1) q.set('forms',forms.join(','));
+    if(S.delayMs) q.set('delay',String(S.delayMs));
+    history.replaceState(null,'','?'+q.toString());
+  }catch(e){}
+}
+
 function refreshSceneNav(){
   // Rebuild scene dots with current locale names
   sceneNav.innerHTML='';
@@ -2170,6 +2240,10 @@ function refreshSceneNav(){
     d.type='button';
     d.className='scene-dot'+(i===S.scene?' active':'');
     d.setAttribute('data-name', sceneNameOf(i));
+    // 前 5 张用真实缩略图；3D 视差与点云用渐变示意
+    if(i<5 && typeof sceneFiles!=='undefined') d.style.backgroundImage=`url(scenes/${sceneFiles[i]})`;
+    else if(i===5) d.style.background='linear-gradient(160deg,#3b3f52,#c9c2ae 60%,#8a8377)';
+    else d.style.background='radial-gradient(circle at 40% 40%,#d8d2c4,#2a2b26 70%)';
     d.setAttribute('aria-label', sceneNameOf(i));
     d.addEventListener('click', ()=>{ if(S.running) changeScene(i); });
     sceneNav.appendChild(d);
@@ -4698,7 +4772,8 @@ function processFrame(){
       }
     } else { S.silence.since=0; S.silence.acted=false; }
   }
-  if(S.mode==='bridge'||S.mode==='osc') pushState(false);   // 闭环回传（节流 500ms）      // 契约归一化（id/presence/state 在这里补全）
+  if(S.mode==='bridge'||S.mode==='osc') pushState(false);   // 闭环回传（节流 500ms）
+  if(S.running) pushURL();                                  // 状态进 URL（节流 400ms）      // 契约归一化（id/presence/state 在这里补全）
   // 留白守卫 — don't let a crowd floodlight the whole scroll; shrink radii once total revealed area passes ~38% of the painting
   if(S.imgBounds && spots.length>2){ const ib=S.imgBounds, maxA=ib.w*ib.h*0.38; let area=0; for(const s of spots){const r=s.radius||S.radius;area+=Math.PI*r*r;}
     if(area>maxA){ const k=Math.sqrt(maxA/area); for(const s of spots)s.radius=(s.radius||S.radius)*k; } }
@@ -5045,6 +5120,7 @@ async function ensureCam(){
   await initCam(S.mode==='flashlight');
 }
 async function start(){
+  setTimeout(()=>{ try{ showOnboard(); }catch(e){} }, 900);   // 开卷后 0.9s 再提示
   const ss = document.getElementById('start-screen');
   ss.classList.add('leaving');
   await new Promise(r=>setTimeout(r,300));

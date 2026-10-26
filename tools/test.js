@@ -395,6 +395,48 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   ok('形式面板共 11 个开关（7 + 驱赶/召唤/书写/仪式）', f4ui.length === 11, String(f4ui.length));
   await page.evaluate(() => { S.repel = false; S.summon = false; S.write = false; S.ritual = false; S.summonDots = []; });
 
+  /* ═══════════════ 2i. 前端引导 / 缩略图 / 状态进 URL ═══════════════ */
+  group('2i · 引导三步 / 场景缩略图 / 状态进 URL');
+  const ob = await page.evaluate(async () => {
+    if (S.running) { stop(); await new Promise(r => setTimeout(r, 500)); }
+    try { localStorage.removeItem('ink-onboard'); } catch (e) {}
+    document.getElementById('btn-start').click();
+    await new Promise(r => setTimeout(r, 1400));
+    const el = document.getElementById('onboard');
+    const shown = el && el.classList.contains('show');
+    const steps = document.querySelectorAll('#onboard .ob-step').length;
+    const texts = [...document.querySelectorAll('#onboard .ob-step span')].map(x => x.textContent.trim());
+    return { shown, steps, texts };
+  });
+  ok('入场引导：开卷后出现三步骤', ob.shown === true && ob.steps === 3, JSON.stringify(ob));
+  ok('入场引导：三步都有文案', ob.texts.every(t => t.length > 3), ob.texts.join(' | '));
+
+  const obHide = await page.evaluate(async () => {
+    const D2 = document.getElementById('display');
+    D2.dispatchEvent(new PointerEvent('pointermove', { pointerId: 1, clientX: 300, clientY: 300, bubbles: true }));
+    await new Promise(r => setTimeout(r, 800));
+    const el = document.getElementById('onboard');
+    return { hidden: !el.classList.contains('show'), flag: localStorage.getItem('ink-onboard') };
+  });
+  ok('入场引导：首次交互后消失并记住（不再打扰）', obHide.hidden === true && obHide.flag === '1', JSON.stringify(obHide));
+
+  const thumbs = await page.evaluate(() => {
+    const ds = [...document.querySelectorAll('.scene-dot')];
+    const box = ds[0] ? ds[0].getBoundingClientRect() : { width: 0 };
+    return { n: ds.length, w: Math.round(box.width),
+      imgs: ds.filter(d => (d.style.backgroundImage || '').startsWith('url(')).length };
+  });
+  ok('场景缩略图：7 个、比圆点大、前 5 张是真的图', thumbs.n === 7 && thumbs.w >= 20 && thumbs.imgs === 5,
+    JSON.stringify(thumbs));
+
+  const urlState = await page.evaluate(async () => {
+    changeScene(3); await new Promise(r => setTimeout(r, 700));
+    const q = new URLSearchParams(location.search);
+    return { scene: q.get('scene'), mode: q.get('mode'), style: q.get('style'), href: location.search.slice(0, 90) };
+  });
+  ok('状态进 URL：换场景后地址栏带 scene/mode/style',
+    urlState.scene === '3' && !!urlState.mode && !!urlState.style, JSON.stringify(urlState));
+
   /* ═══════════════ 3. start / default mode ═══════════════ */
   group('3 · 进入画卷 / start');
   await page.goto(`${BASE}/index.html`);   // 前面几组会改模态/开卷，这里要一张干净的页
