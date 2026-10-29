@@ -141,6 +141,7 @@ tailscale serve --bg 8888
 | 装置：手柄 / MIDI / HID / 蓝牙 / NFC / 手机众光 / 眼动 / 串口 | 静默（安静 20 秒翻页） | 分享卡 PNG | MQTT 桥 |
 | 环境：在场 / 多屏 / 锁键 / 机器负载 | 日课（日期定题款） | 深链预设 | **Art-Net DMX**（真灯跟随） |
 | **内容源**：上传图 / 视频 · 文本故事 · 声音层 · `InkScroll.registerSource` | | | 任何能画到画布的东西都能被光揭开（[docs/SOURCES.md](docs/SOURCES.md)） |
+| **契约** `Spot{x,y,radius,t,vel,extent,members,presence,state}` | 11 种形式各有可见签名 | kiosk 守护 + `/health` 心跳 | 离线：MediaPipe 本地优先 |
 | | 共处（一人揭不开）· 供奉（痕迹自己长大） | `/health` `/rooms` `/state` | 双向回传 `room=ext-state` |
 
 ## 三十秒上手
@@ -155,6 +156,7 @@ open http://localhost:8888/
 - 想接 TouchDesigner → 发 OSC 到 `udp/9000`：`/spot 0.5 0.5 1.0`
 - 想让真灯跟着光 → `DMX_HOST=<控台IP> python3 server.py 8888`
 - 想换成自己的画 → **把图拖进页面**（或按 `U`）；视频同样拖；文本 `?story=1`；配乐 `?sound=demo`
+- 展厅断网 / 无人值守 → `python3 tools/vendor_mediapipe.py` 一次，然后 `bash examples/kiosk/ink-kiosk.sh`（崩了自己重开，`/health` 有心跳）
 
 ## 🧭 第一次打开会发生什么
 

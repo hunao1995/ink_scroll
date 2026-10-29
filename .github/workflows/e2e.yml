@@ -38,6 +38,15 @@ jobs:
       - name: build fake camera fixtures
         run: python3 tools/make-fixtures.py
 
+      - name: cache local MediaPipe (offline path)
+        uses: actions/cache@v4
+        with:
+          path: web/vendor/mediapipe
+          key: mediapipe-${{ hashFiles('tools/vendor_mediapipe.py') }}
+
+      - name: vendor MediaPipe (so the suite tests the offline path too)
+        run: python3 tools/vendor_mediapipe.py
+
       - name: end-to-end interactions
         env:
           # CI runners are 2 vCPU software-rendering boxes: keep the budget honest

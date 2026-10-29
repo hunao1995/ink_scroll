@@ -69,7 +69,12 @@ function watch(page, bucket) {
     if (/hands_solution|face_mesh_solution|Module\.loaded|setting 'loaded'/.test(e.message)) return;
     bucket.push('pageerror: ' + e.message);
   });
-  page.on('console', m => { if (m.type() === 'error') bucket.push('console: ' + m.text().slice(0, 200)); });
+  page.on('console', m => {
+    if (m.type() !== 'error') return;
+    const loc = (m.location && m.location().url) || '';
+    if (/vendor\/mediapipe\//.test(loc) && /404/.test(m.text())) return;   // 本地 vendor 不存在时的一次探测，预期内
+    bucket.push('console: ' + m.text().slice(0, 200));
+  });
   page.on('requestfailed', r => {
     const u = r.url();
     const why = (r.failure() && r.failure().errorText) || '';
@@ -664,8 +669,10 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   ok('文本源：光变成一列（band，高 ≫ 宽）', bandT.shape === 'band' && bandT.tall === true, JSON.stringify(bandT));
   ok('文本源：光照到的那一列有字，旁边的列只有纸', bandT.inside > 0.01 && bandT.inside > bandT.outside * 3, JSON.stringify(bandT));
 
+  const vendorPresent = await page.evaluate(async () => (await fetch('vendor/mediapipe/hands/hands.js', { method: 'HEAD' })).ok);
   const mpT = await page.evaluate(() => ({ local: window.MP_LOCAL, hands: typeof window.Hands, dir: window.mpDir('hands') }));
-  ok('MediaPipe：本地 vendor 存在时走本地（不碰 CDN）', mpT.local === true && /^vendor\//.test(mpT.dir) && mpT.hands === 'function', JSON.stringify(mpT));
+  if (vendorPresent) ok('MediaPipe：本地 vendor 存在时走本地（不碰 CDN）', mpT.local === true && /^vendor\//.test(mpT.dir) && mpT.hands === 'function', JSON.stringify(mpT));
+  else ok('MediaPipe：本地 vendor 不存在时回退 CDN 且手势模型可用', mpT.local === false && /jsdelivr/.test(mpT.dir) && mpT.hands === 'function', JSON.stringify(mpT));
 
   const offline = await browser.newPage({ viewport: { width: 1200, height: 800 } });
   await offline.route(/jsdelivr|googleapis|gstatic/, r => r.abort());
@@ -674,7 +681,8 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   await offline.goto(`${BASE}/index.html`, { waitUntil: 'load' });
   await offline.waitForFunction(() => { const l = document.getElementById('loading'); return l && l.classList.contains('gone'); }, { timeout: 10000 }).catch(() => {});
   const offBoot = await offline.evaluate(() => ({ gone: document.getElementById('loading').classList.contains('gone'), local: window.MP_LOCAL }));
-  ok('断网（CDN 全部被拦）：页面照样起来，手势模型从本地取', offBoot.gone === true && offBoot.local === true, `${Date.now() - tOff}ms ${JSON.stringify(offBoot)}`);
+  ok(vendorPresent ? '断网（CDN 全部被拦）：页面照样起来，手势模型从本地取' : '断网（CDN 全部被拦）：页面照样起来（无 vendor 时手势回落提示）',
+    offBoot.gone === true && (vendorPresent ? offBoot.local === true : offBoot.local === false), `${Date.now() - tOff}ms ${JSON.stringify(offBoot)}`);
   await offline.close();
   await page.goto(`${BASE}/index.html`); await sleep(1200);
 

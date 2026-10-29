@@ -1065,6 +1065,11 @@ html[lang^="zh"] .overlay .sheet .sect-h{letter-spacing:.3em;text-transform:none
   window.mpDir=function(k){ return window.MP_LOCAL ? (V+k+'/') : CDN[k]; };
   const add=(u)=>{ const s=document.createElement('script'); s.async=true; s.src=u; document.head.appendChild(s); };
   const go=()=>{ add(window.mpDir('camera_utils')+'camera_utils.js'); add(window.mpDir('hands')+'hands.js'); };
+  /* 什么时候探本地：?mp=local 强制；?mp=cdn 强制；否则只在 localhost / 局域网 / file 下自动探
+     （公网域名上不探：没有 vendor 时一次 404 会在控制台留痕，而公网本来就有 CDN） */
+  const q=new URLSearchParams(location.search), mp=q.get('mp');
+  const h=location.hostname, lan=/^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|\[::1\])/.test(h)||location.protocol==='file:';
+  if(mp==='cdn' || (!lan && mp!=='local')){ window.MP_LOCAL=false; go(); return; }
   const ctrl=('AbortController' in window)?new AbortController():null;
   const timer=setTimeout(()=>{ try{ctrl&&ctrl.abort();}catch(e){} }, 1500);
   fetch(V+'hands/hands.js',{method:'HEAD',signal:ctrl?ctrl.signal:undefined})

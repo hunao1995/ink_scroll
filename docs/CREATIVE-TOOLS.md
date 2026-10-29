@@ -26,7 +26,7 @@ python3 tools/vendor_mediapipe.py        # 下载到 web/vendor/mediapipe/（约
 python3 tools/vendor_mediapipe.py --check
 ```
 
-页面启动时 HEAD 一次 `vendor/mediapipe/hands/hands.js`：有就全走本地（手势 / 面庞 / 眨眼 / 头部视差都不碰网），没有就回退 jsdelivr。
+页面在 localhost / 局域网 / file 下启动时 HEAD 一次 `vendor/mediapipe/hands/hands.js`：有就全走本地（手势 / 面庞 / 眨眼 / 头部视差都不碰网），没有就回退 jsdelivr。公网域名默认不探测（直接 CDN）；要在公网部署里用本地包加 `?mp=local`，要强制 CDN 加 `?mp=cdn`。CI 每次都会先跑一遍 vendor 脚本（带缓存），所以离线路径是被测试的。
 字体同理：Google Fonts 不阻塞渲染，断网时回落系统衬线。实测 CDN 全部被拦时首屏 0.4 s 起来。
 
 ## 一条命令自检（真的跑，不是文档）
