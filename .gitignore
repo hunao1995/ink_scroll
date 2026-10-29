@@ -24,3 +24,6 @@ tools/node_modules/
 tools/fixtures/
 tools/shots/
 tools/last-run.json
+
+# 本地 MediaPipe（python3 tools/vendor_mediapipe.py 生成，约 37 MB，不进仓库）
+web/vendor/

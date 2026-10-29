@@ -619,6 +619,66 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   ok('首页「展厅模式」按钮真的能进投影墙（之前没绑事件）', galleryT.running === true && galleryT.wall === true && galleryT.mode === 'auto', JSON.stringify(galleryT));
   await page.goto(`${BASE}/index.html`); await sleep(1200);
 
+  /* ═══════════════ 2l. 契约几何 + 离线 MediaPipe ═══════════════ */
+  group('2l · 契约：t / vel / extent / members；文本源按「一列」揭示；MediaPipe 本地优先');
+  const ctr2 = await page.evaluate(() => {
+    const a = normSpot({ x: 10, y: 10, radius: 100 });
+    const b = normSpot({ x: 10, y: 10, radius: 100, extent: { shape: 'band', w: 40, h: 500, ang: 0.3 }, members: ['p1', 'p2'], t: 1234 });
+    const c = normSpot({ x: 10, y: 10, radius: 100, brush: 1 });
+    const d = normSpot({ x: 10, y: 10, radius: 100, extent: { shape: 'zzz' } });
+    return { aT: typeof a.t === 'number' && a.t > 0, aShape: a.extent.shape, aVel: a.vel.dx === 0,
+      bShape: b.extent.shape, bW: b.extent.w, bH: b.extent.h, bAng: +b.extent.ang.toFixed(2), bT: b.t, bMembers: b.members.join(','),
+      cShape: c.extent.shape, dShape: d.extent.shape };
+  });
+  ok('契约：默认孔径是圆，带 t 与零速度', ctr2.aT && ctr2.aShape === 'disc' && ctr2.aVel, JSON.stringify(ctr2));
+  ok('契约：band / brush 孔径与 members / t 原样进契约，未知形状回落圆',
+    ctr2.bShape === 'band' && ctr2.bW === 40 && ctr2.bH === 500 && ctr2.bAng === 0.3 && ctr2.bT === 1234
+      && ctr2.bMembers === 'p1,p2' && ctr2.cShape === 'brush' && ctr2.dShape === 'disc', JSON.stringify(ctr2));
+
+  const velT = await page.evaluate(async () => {
+    if (!S.running) { document.getElementById('btn-start').click(); await new Promise(r => setTimeout(r, 1200)); }
+    wM('mouse');
+    const D2 = document.getElementById('display');
+    const mv = (x) => D2.dispatchEvent(new PointerEvent('pointermove', { pointerId: 1, pointerType: 'mouse', clientX: x, clientY: 300, bubbles: true }));
+    mv(200); await new Promise(r => setTimeout(r, 120)); mv(600); await new Promise(r => setTimeout(r, 120));
+    const sp = (S._lastSpots || [])[0];
+    return { has: !!sp, dx: sp ? Math.round(sp.vel.dx) : null, shape: sp && sp.extent.shape };
+  });
+  ok('契约：vel 由跨帧位移算出（向右移动 → dx > 0）', velT.has && velT.dx > 200, JSON.stringify(velT));
+
+  const bandT = await page.evaluate(async () => {
+    storyUse(STORY_DEMO); await new Promise(r => setTimeout(r, 500));
+    const D2 = document.getElementById('display');
+    const cx = Math.round(D2.clientWidth * 0.5), cy = Math.round(D2.clientHeight * 0.5);
+    D2.dispatchEvent(new PointerEvent('pointermove', { pointerId: 1, pointerType: 'mouse', clientX: cx, clientY: cy, bubbles: true }));
+    await new Promise(r => setTimeout(r, 400));
+    const sp = (S._lastSpots || [])[0];
+    const g = D.getContext('2d');
+    const dark = (x0, w) => { const d = g.getImageData(x0, Math.round(DH * 0.12), w, Math.round(DH * 0.76)).data;
+      let n = 0, tot = 0; for (let i = 0; i < d.length; i += 4) { tot++; if (d[i] < 110) n++; } return n / tot; };
+    const bw = sp ? Math.round(sp.extent.w) : 40;
+    const inside = dark(Math.round(sp.x - bw * 0.45), Math.round(bw * 0.9));
+    const outside = dark(Math.round(sp.x + bw * 3), Math.round(bw * 0.9));
+    const r = { shape: sp && sp.extent.shape, tall: sp && sp.extent.h > sp.extent.w * 5, inside: +inside.toFixed(4), outside: +outside.toFixed(4) };
+    useSource(null); return r;
+  });
+  ok('文本源：光变成一列（band，高 ≫ 宽）', bandT.shape === 'band' && bandT.tall === true, JSON.stringify(bandT));
+  ok('文本源：光照到的那一列有字，旁边的列只有纸', bandT.inside > 0.01 && bandT.inside > bandT.outside * 3, JSON.stringify(bandT));
+
+  const mpT = await page.evaluate(() => ({ local: window.MP_LOCAL, hands: typeof window.Hands, dir: window.mpDir('hands') }));
+  ok('MediaPipe：本地 vendor 存在时走本地（不碰 CDN）', mpT.local === true && /^vendor\//.test(mpT.dir) && mpT.hands === 'function', JSON.stringify(mpT));
+
+  const offline = await browser.newPage({ viewport: { width: 1200, height: 800 } });
+  await offline.route(/jsdelivr|googleapis|gstatic/, r => r.abort());
+  const offErr = []; watch(offline, offErr);
+  const tOff = Date.now();
+  await offline.goto(`${BASE}/index.html`, { waitUntil: 'load' });
+  await offline.waitForFunction(() => { const l = document.getElementById('loading'); return l && l.classList.contains('gone'); }, { timeout: 10000 }).catch(() => {});
+  const offBoot = await offline.evaluate(() => ({ gone: document.getElementById('loading').classList.contains('gone'), local: window.MP_LOCAL }));
+  ok('断网（CDN 全部被拦）：页面照样起来，手势模型从本地取', offBoot.gone === true && offBoot.local === true, `${Date.now() - tOff}ms ${JSON.stringify(offBoot)}`);
+  await offline.close();
+  await page.goto(`${BASE}/index.html`); await sleep(1200);
+
   /* ═══════════════ 3. start / default mode ═══════════════ */
   group('3 · 进入画卷 / start');
   await page.goto(`${BASE}/index.html`);   // 前面几组会改模态/开卷，这里要一张干净的页

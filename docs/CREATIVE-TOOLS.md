@@ -19,6 +19,16 @@
 `r` 是半径倍率（0.02–3），`scene` 0–5，`style` 0–3，`cmd` 支持 `splat` / `paint`。
 只发 `x,y` 也够用。
 
+## 展厅断网：MediaPipe 本地化
+
+```bash
+python3 tools/vendor_mediapipe.py        # 下载到 web/vendor/mediapipe/（约 34 MB，不进 git）
+python3 tools/vendor_mediapipe.py --check
+```
+
+页面启动时 HEAD 一次 `vendor/mediapipe/hands/hands.js`：有就全走本地（手势 / 面庞 / 眨眼 / 头部视差都不碰网），没有就回退 jsdelivr。
+字体同理：Google Fonts 不阻塞渲染，断网时回落系统衬线。实测 CDN 全部被拦时首屏 0.4 s 起来。
+
 ## 一条命令自检（真的跑，不是文档）
 
 ```bash

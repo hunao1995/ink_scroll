@@ -47,6 +47,7 @@ python3 server.py 8888            # 静态 + SSE + OSC(9000)；要 DMX 再加 DM
 chromium --kiosk "http://localhost:8888/?preset=kiosk"
 ```
 
+- **断网也能开**：先跑一次 `python3 tools/vendor_mediapipe.py`，手势 / 面庞不再依赖 CDN
 - 屏幕常亮：页面已用 `wakeLock`
 - 观众离开 60s：`presence` 模态会让光圈自己收小（不会黑屏）
 - 灯光跟随：`DMX_HOST=<控台IP> python3 server.py 8888`（CH1 亮度 / CH2 x / CH3 y / CH4 半径）

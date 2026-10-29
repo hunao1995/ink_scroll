@@ -51,10 +51,23 @@ InkScroll.sources;               // 已注册的 id 列表
 | 输入（42 模态、中继、OSC/HTTP/MQTT） | ✅ | 和内容无关 |
 | 形式（延迟 / 共处 / 仪式 / 静默 / 累积 …） | ✅ | 只改光点数组，不碰内容 |
 | **内容源** | ✅（本版新增） | 任何能画到 2D 画布的东西；声音走参数映射 |
-| 揭示几何 | ⚠️ | 仍是「圆 / 椭圆局部裁剪」。阅读顺序（诗）、笔势（书法）、身体线（舞蹈）需要把 `radius` 换成类型化 `extent`，还没做 |
+| 揭示几何 | ✅（0.2.7） | `Spot.extent` 类型化孔径：`disc`（圆）/ `band`（一列，文本源默认）/ `rect` / `brush`；内容源可用 `extent(spot,W,H)` 决定孔径。`t` 与 `vel`（像素/秒）进契约，`members` 透传 |
 | 水墨质感（Sobel 墨线、粒子、题款） | 水墨专属 | 换内容时可用 `rawMask` / `overlay:false` 关掉 |
 
-所以准确的说法是：**输入层、形式层、内容层都通用；揭示几何还是一个圆。** 下一层要动的是 `Spot{x,y,radius}` 本身。
+所以准确的说法是：**输入层、形式层、内容层、孔径都可换；水墨质感是可关的风格。** 还没做的是把身体当「线」而不是「点」（舞蹈需要骨架级 `members` 关系），以及声音的「频带孔径」。
+
+## 契约（0.2.7）
+
+```js
+Spot = {
+  x, y, radius,                 // 像素；radius 仍是圆孔径的半径（向后兼容）
+  t,                            // 时间戳 ms（缺省 performance.now()）
+  vel: {dx, dy},                // 像素/秒，按 id 跨帧平滑
+  extent: {shape:'disc'|'band'|'rect'|'brush', r?, w?, h?, ang?},
+  id, presence, state, members: [id...], hue, brush, ang, frozen
+}
+```
+模态只给 `{x,y,radius}` 就够；内容源想换孔径就实现 `extent(spot,W,H)`。文本源返回 `{shape:'band', w:一列宽, h:0.86H}`，于是「照到哪一列，读哪一列」。
 
 ## 给策展人 / 合作者
 

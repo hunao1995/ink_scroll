@@ -1053,8 +1053,25 @@ html[lang^="zh"] .overlay .sheet .sect-h{letter-spacing:.3em;text-transform:none
 </div>
 <div id="roster"></div>
 
-<script async src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3/camera_utils.js"></script>
-<script async src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js"></script>
+<script>
+/* MediaPipe 本地优先：web/vendor/mediapipe/ 存在就不碰 CDN（展厅断网也能开手势 / 面庞）。
+   没有就回退到 jsdelivr。下载脚本：python3 tools/vendor_mediapipe.py */
+(function(){
+  const V='vendor/mediapipe/';
+  const CDN={camera_utils:'https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3/',
+             hands:'https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/',
+             face_mesh:'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/'};
+  window.MP_LOCAL=false; window.MP_CDN=CDN;
+  window.mpDir=function(k){ return window.MP_LOCAL ? (V+k+'/') : CDN[k]; };
+  const add=(u)=>{ const s=document.createElement('script'); s.async=true; s.src=u; document.head.appendChild(s); };
+  const go=()=>{ add(window.mpDir('camera_utils')+'camera_utils.js'); add(window.mpDir('hands')+'hands.js'); };
+  const ctrl=('AbortController' in window)?new AbortController():null;
+  const timer=setTimeout(()=>{ try{ctrl&&ctrl.abort();}catch(e){} }, 1500);
+  fetch(V+'hands/hands.js',{method:'HEAD',signal:ctrl?ctrl.signal:undefined})
+    .then(r=>{ clearTimeout(timer); window.MP_LOCAL=!!r.ok; go(); })
+    .catch(()=>{ clearTimeout(timer); window.MP_LOCAL=false; go(); });
+})();
+</script>
 <script>
 /* ═══════════════════════════════════════════════════════════
    墨卷 · Ink Scroll — Core Engine
@@ -2538,6 +2555,10 @@ function layoutVertical(g,W,H,story,colour){
 function storyUse(story){
   const st=story||STORY_DEMO;
   registerSource('story',{ name:st.title||t('srcStory'), overlay:false, story:st,
+    extent(sp,W,H){                                   // 阅读是一维的：光圈变成「一列」，照到哪一列读哪一列
+      const colW=clampN(Math.round(H/22),16,64)*1.65;
+      return {shape:'band', w:colW*1.1, h:H*0.86, ang:0};
+    },
     drawColor(g,W,H){ g.fillStyle='#f5f4ed'; g.fillRect(0,0,W,H); layoutVertical(g,W,H,st,true); },
     drawMask(g,w,h){                                   // 墨层只画纸和淡淡的行栏：字要被光照到才显
       g.fillStyle='#f5f4ed'; g.fillRect(0,0,w,h);
@@ -2922,9 +2943,7 @@ window.addEventListener('error',e=>{
    both are alive in the same page one of them starts fetching its assets from
    the other's directory. Routing by file-name prefix keeps each in its own
    versioned folder, so 手势 and 面庞 can coexist. */
-const MP_DIRS={hands:'https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/',
-               face_mesh:'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/'};
-function mpLocate(file){ return (String(file).indexOf('face_mesh')===0?MP_DIRS.face_mesh:MP_DIRS.hands)+file; }
+function mpLocate(file){ return window.mpDir(String(file).indexOf('face_mesh')===0?'face_mesh':'hands')+file; }
 
 /* ───────────────────────────────────────────────────────────
    Hand gesture (MediaPipe Hands)
@@ -3158,7 +3177,7 @@ function loadFaceMesh(){
   if(fmLoading) return fmLoading;
   fmLoading=new Promise((res,rej)=>{
     const s=document.createElement('script');
-    s.src='https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/face_mesh.js';
+    s.src=window.mpDir('face_mesh')+'face_mesh.js';
     s.async=true;
     s.onload=()=>res();
     s.onerror=()=>rej(new Error('face_mesh.js failed to load'));
@@ -3988,15 +4007,52 @@ function clapOnset(){
 function normSpot(s,i){
   if(!s) return null;
   const pr = s.presence==null ? 1 : clampN(+s.presence,0,1);
+  const radius = clampRadius((s.radius==null?S.radius:+s.radius))*(0.55+0.45*pr);
+  const ex = normExtent(s.extent, radius, s);
   return {
     x: clampN(+s.x||0, 0, DW),
     y: clampN(+s.y||0, 0, DH),
-    radius: clampRadius((s.radius==null?S.radius:+s.radius))*(0.55+0.45*pr),
+    radius,
     id: s.id!=null ? String(s.id) : ('sp'+(i||0)),
+    t: Number.isFinite(+s.t) ? +s.t : performance.now(),   // 时间戳：笔速 / 相位 / 曝光积分都靠它
+    vel: {dx:0, dy:0},                                      // 像素/秒，由 annotateSpots 按 id 跨帧算
+    extent: ex,                                             // 类型化孔径：disc | band | brush | rect
+    members: Array.isArray(s.members) ? s.members.map(String).slice(0,8) : [],
     presence: pr,
     state: (s.state&&typeof s.state==='object') ? s.state : {},
     hue: s.hue, brush: s.brush|0, ang: +s.ang||0, frozen: !!s.frozen,
   };
+}
+/* 孔径不再只能是圆：
+     disc  {r}            默认，= radius
+     band  {w,h,ang}      一条带（读一行字、一条光束）
+     rect  {w,h,ang}      矩形窗
+     brush {w,h,ang}      笔锋椭圆（= brush:1 的类型化写法）           */
+function normExtent(e, radius, s){
+  const shape = e && typeof e==='object' && e.shape ? String(e.shape) : (s && s.brush===1 ? 'brush' : 'disc');
+  if(shape==='disc') return {shape:'disc', r:radius};
+  const w = clampN(+(e&&e.w)||radius*2, 4, Math.max(DW,DH)*2);
+  const h = clampN(+(e&&e.h)||radius*2, 4, Math.max(DW,DH)*2);
+  return {shape:(shape==='band'||shape==='rect'||shape==='brush')?shape:'disc', w, h, ang:+(e&&e.ang)||+(s&&s.ang)||0, r:radius};
+}
+const _spotPrev = new Map();
+function annotateSpots(spots){
+  const now = performance.now(), seen = new Set();
+  for(const sp of spots){
+    seen.add(sp.id);
+    const pv = _spotPrev.get(sp.id);
+    if(pv){ const dt = Math.max(8, sp.t - pv.t), pvv = pv.vel||{dx:0,dy:0};
+      const rx=(sp.x-pv.x)/dt*1000, ry=(sp.y-pv.y)/dt*1000;          // 像素/秒
+      sp.vel = {dx: pvv.dx*0.8 + rx*0.25, dy: pvv.dy*0.8 + ry*0.25}; // 平滑：一次跳动后衰减几帧，笔速/相位才读得稳
+    }
+    _spotPrev.set(sp.id, {x:sp.x, y:sp.y, t:sp.t, vel:sp.vel});
+    if(S.source && typeof S.source.extent==='function'){        // 内容源可以决定孔径（文本源：一列）
+      try{ const ex = S.source.extent(sp, DW, DH); if(ex) sp.extent = normExtent(ex, sp.radius, sp); }catch(e){}
+    }
+    if(S.write) sp.radius = clampRadius(sp.radius * (S.writeW||1));   // 书写：笔速越快笔画越细（可见）
+  }
+  for(const k of _spotPrev.keys()) if(!seen.has(k) && now - _spotPrev.get(k).t > 3000) _spotPrev.delete(k);
+  return spots;
 }
 
 /* ───────────────────────────────────────────────────────────
@@ -4513,7 +4569,13 @@ function pushSplat(x,y,power,spin){
 }
 // 笔锋 — build the reveal path for a spot: 0=disc, 1=streak (along motion), 2=scatter
 function buildSpotPath(s){
-  const r=s.radius||S.radius, b=s.brush||0;
+  const r=s.radius||S.radius, b=s.brush||0, ex=s.extent;
+  if(ex && ex.shape==='band' || ex && ex.shape==='rect'){        // 带 / 矩形窗：按 ang 旋转
+    const c=Math.cos(ex.ang||0), n=Math.sin(ex.ang||0), hw=ex.w/2, hh=ex.h/2;
+    const pts=[[-hw,-hh],[hw,-hh],[hw,hh],[-hw,hh]].map(([px,py])=>[s.x+px*c-py*n, s.y+px*n+py*c]);
+    ctx.moveTo(pts[0][0],pts[0][1]); for(let i=1;i<4;i++) ctx.lineTo(pts[i][0],pts[i][1]); ctx.closePath(); return;
+  }
+  if(ex && ex.shape==='brush'){ ctx.ellipse(s.x,s.y,ex.w/2,ex.h/2,ex.ang||0,0,Math.PI*2); return; }
   if(b===1){ ctx.ellipse(s.x,s.y,r*1.5,r*0.62,s.ang||0,0,Math.PI*2); }
   else if(b===2){ ctx.moveTo(s.x+r*0.55,s.y);ctx.arc(s.x,s.y,r*0.55,0,Math.PI*2);
     const seed=s.id?s.id.charCodeAt(0):0;
@@ -4973,7 +5035,8 @@ function processFrame(){
   // …but NOT when a hand is present in hand-mode making a fist (收光 = deliberately dark); only attract when truly idle (no hand)
   if(spots.length===0 && S.running && !(S.mode==='hand' && S.gesture!=='none')){ S.attract=(S.attract||0)+0.0045;
     spots=[{x:DW*(0.82-0.64*((S.attract*0.22)%1)), y:DH*(0.5+0.16*Math.sin(S.attract*0.9)), radius:S.radius*0.8}]; }
-  spots = spots.map(normSpot).filter(Boolean);
+  spots = annotateSpots(spots.map(normSpot).filter(Boolean));
+  S._lastSpots = spots;                                     // 调试 / 测试：这一帧真正进入渲染的光
   if(S.ritual && performance.now() > (S.ritualUntil||0)) spots = [];   // 仪式未完成：不揭示
   if(S.together){                                   // 形式：共处（一个人揭不开）
     if(spots.length < S.togetherNeed){
@@ -5097,11 +5160,12 @@ function processFrame(){
     }
     // identity rings (frozen = thicker)
     for(let i=0;i<cap;i++){ const s=spots[i]; const r=s.radius||S.radius;
+      const nonDisc = s.extent && s.extent.shape!=='disc';
       ctx.strokeStyle='rgba(20,20,19,.30)';ctx.lineWidth=(s.frozen?4:2.5);
-      ctx.beginPath();ctx.arc(s.x,s.y,r+1,0,Math.PI*2);ctx.stroke();
+      ctx.beginPath(); if(nonDisc) buildSpotPath(s); else ctx.arc(s.x,s.y,r+1,0,Math.PI*2); ctx.stroke();
       ctx.strokeStyle=s.hue?hexA(s.hue,.62):'rgba(201,100,66,.34)';
       ctx.lineWidth=s.frozen?2.5:1.4;
-      ctx.beginPath();ctx.arc(s.x,s.y,r,0,Math.PI*2);ctx.stroke();
+      ctx.beginPath(); if(nonDisc) buildSpotPath(s); else ctx.arc(s.x,s.y,r,0,Math.PI*2); ctx.stroke();
     }
     // 合手成圆 — where two beams overlap, the colour blooms; gold seam + a one-shot buzz
     if(spots.length>=2){
