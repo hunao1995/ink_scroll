@@ -140,6 +140,7 @@ tailscale serve --bg 8888
 | 声学：声音 / 呼吸 / 吹墨 / 拍手 / 底噪 / 节拍 BPM / 口哨音名 | 延迟（晚 8 秒） | 红蓝 / 左右立体 | `postMessage` / `window.InkScroll` |
 | 装置：手柄 / MIDI / HID / 蓝牙 / NFC / 手机众光 / 眼动 / 串口 | 静默（安静 20 秒翻页） | 分享卡 PNG | MQTT 桥 |
 | 环境：在场 / 多屏 / 锁键 / 机器负载 | 日课（日期定题款） | 深链预设 | **Art-Net DMX**（真灯跟随） |
+| **内容源**：上传图 / 视频 · 文本故事 · 声音层 · `InkScroll.registerSource` | | | 任何能画到画布的东西都能被光揭开（[docs/SOURCES.md](docs/SOURCES.md)） |
 | | 共处（一人揭不开）· 供奉（痕迹自己长大） | `/health` `/rooms` `/state` | 双向回传 `room=ext-state` |
 
 ## 三十秒上手
@@ -153,6 +154,7 @@ open http://localhost:8888/
 - 想当展厅装置 → `?preset=kiosk`（投影墙 + 校准网格 + 自动开卷）
 - 想接 TouchDesigner → 发 OSC 到 `udp/9000`：`/spot 0.5 0.5 1.0`
 - 想让真灯跟着光 → `DMX_HOST=<控台IP> python3 server.py 8888`
+- 想换成自己的画 → **把图拖进页面**（或按 `U`）；视频同样拖；文本 `?story=1`；配乐 `?sound=demo`
 
 ## 🧭 第一次打开会发生什么
 
@@ -292,6 +294,7 @@ node tools/test.js
 | [docs/MODALITY-ATLAS.md](docs/MODALITY-ATLAS.md) | 125 条交互模态的工程图谱 |
 | [docs/INTERACTIONS.md](docs/INTERACTIONS.md) | 交互契约（加模态看这里） |
 | [docs/CREATIVE-TOOLS.md](docs/CREATIVE-TOOLS.md) | Blender / TouchDesigner / MQTT / Art-Net 接入 |
+| [docs/SOURCES.md](docs/SOURCES.md) | **内容源接口**：上传 / 视频 / 文本 / 声音，任何内容都能被光揭开 |
 | [docs/PRESETS.md](docs/PRESETS.md) | 一键预设与 URL 参数 |
 | [docs/REVIEW.md](docs/REVIEW.md) | **代码审核清单**（每次改完必过） |
 | [docs/ETHICS.md](docs/ETHICS.md) | 身体数据与伦理底线 |

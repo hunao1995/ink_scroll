@@ -212,7 +212,7 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
   ok('首页有 4 个预设按钮（不再只能靠 URL 参数）',
     ui.presets.length === 4 && ui.presets.join(',') === 'gallery,kiosk,stereo,lab', ui.presets.join(','));
-  ok('帮助面板有 4 个输出开关（墙/网格/立体/点云）', ui.outs.length === 4, ui.outs.join(' | '));
+  ok('帮助面板有 8 个输出/内容开关（墙/网格/立体/点云 + 上传/文本/声音/活墨层）', ui.outs.length === 8, ui.outs.join(' | '));
   ok('帮助面板同时列出 42 个模态', ui.helpModes === 42, String(ui.helpModes));
   const formsUI = await page.evaluate(() => {
     buildHelpModes();
@@ -533,6 +533,90 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   });
   ok('脏载荷（NaN / 字符串 / 循环对象 / scene 99）不会让光圈消失', hard.finite === true && hard.scene < 7, JSON.stringify(hard));
   ok('并发切换摄像头模态后回到指针：无残留摄像头轨道', hard.live === 0 && hard.mode === 'mouse', JSON.stringify(hard));
+  await page.goto(`${BASE}/index.html`); await sleep(1200);
+
+  /* ═══════════════ 2k. 内容源：任何图 / 视频 / 文本 / 声音都能被光揭开 ═══════════════ */
+  group('2k · 内容源接口：注册 / 活墨层 / 上传 / 文本 / 声音层 / 对外 API');
+  const srcLive = await page.evaluate(async () => {
+    if (!S.running) { document.getElementById('btn-start').click(); await new Promise(r => setTimeout(r, 1200)); }
+    const sum = () => { const g = hiCvs.getContext('2d'); const half = Math.floor(hiCvs.width / 2);   // 只算左半幅：矩形左右移动，整幅总和不变
+      const d = g.getImageData(0, 0, half, hiCvs.height).data; let a = 0; for (let i = 0; i < d.length; i += 16) a += d[i]; return a; };
+    const okReg = registerSource('t-live', { live: true, drawColor(g, W, H, t) {
+      g.fillStyle = '#f5f4ed'; g.fillRect(0, 0, W, H); g.fillStyle = '#222';
+      const x = W * (0.05 + 0.7 * ((t / 3) % 1)); g.fillRect(x, H * 0.2, W * 0.2, H * 0.6); } });   // 连续平移：1.3s 必移 ~0.3W
+    const used = useSource('t-live');
+    const a = sum(); await new Promise(r => setTimeout(r, 1300)); const b = sum();
+    const id = S.sourceId; useSource(null);
+    return { okReg, used, id, changed: a !== b, restored: S.source === null, bad: useSource('nope') };
+  });
+  ok('内容源：注册 + 启用 + 停用都生效，未知 id 返回 false',
+    srcLive.okReg && srcLive.used && srcLive.id === 't-live' && srcLive.restored && srcLive.bad === false, JSON.stringify(srcLive));
+  ok('内容源：live 源的墨层会随时间重算（视频 / 生成内容的前提）', srcLive.changed === true, JSON.stringify(srcLive));
+
+  const storyT = await page.evaluate(async () => {
+    storyUse(STORY_DEMO); await new Promise(r => setTimeout(r, 400));
+    const ink = (cvs) => { const g = cvs.getContext('2d'); const d = g.getImageData(0, 0, cvs.width, cvs.height).data;
+      let n = 0, tot = 0; for (let i = 0; i < d.length; i += 8) { tot++; if (d[i] < 110) n++; } return n / tot; };
+    const colourInk = ink(scCvs), maskInk = ink(hiCvs);
+    const q = new URLSearchParams(location.search).get('story');
+    useSource(null);
+    return { id: 'story', colourInk: +colourInk.toFixed(4), maskInk: +maskInk.toFixed(4), q };
+  });
+  ok('文本源：彩色层里有文字（墨色像素）而墨层几乎空白 → 字要被光照到才显',
+    storyT.colourInk > 0.004 && storyT.maskInk < storyT.colourInk * 0.5, JSON.stringify(storyT));
+  ok('文本源：状态进 URL（?story=1 可分享）', storyT.q === '1', String(storyT.q));
+
+  const uploadT = await page.evaluate(async () => {
+    const c = document.createElement('canvas'); c.width = 64; c.height = 64;
+    const g = c.getContext('2d'); g.fillStyle = '#ff0000'; g.fillRect(0, 0, 64, 64);
+    const blob = await new Promise(r => c.toBlob(r, 'image/png'));
+    const file = new File([blob], 'red.png', { type: 'image/png' });
+    const dt = new DataTransfer(); dt.items.add(file);
+    document.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
+    await new Promise(r => setTimeout(r, 700));
+    const px = scCvs.getContext('2d').getImageData(Math.floor(DW / 2), Math.floor(DH / 2), 1, 1).data;
+    const id = S.sourceId, name = S.source && S.source.name;
+    const input = document.getElementById('file-in');
+    const btn = document.getElementById('btn-upload');
+    useSource(null);
+    return { id, name, red: px[0] > 200 && px[1] < 60, accept: input && input.accept, btn: !!btn, bad: attachFile(new File(['x'], 'a.txt', { type: 'text/plain' })) };
+  });
+  ok('上传：拖一张图进来就成为隐藏层（画面中心是上传的颜色）', uploadT.id === 'upload' && uploadT.red === true && uploadT.name === 'red.png', JSON.stringify(uploadT));
+  ok('上传：首页有入口按钮 + 文件框接受图片/视频，非法文件安全返回 false',
+    uploadT.btn && /image/.test(uploadT.accept) && /video/.test(uploadT.accept) && uploadT.bad === false, JSON.stringify(uploadT));
+
+  const soundT = await page.evaluate(() => {
+    const W = 1000, H = 600;
+    const small = soundParams({ x: 0, y: 0, radius: 10, presence: 1 }, W, H);
+    const big = soundParams({ x: W, y: 0, radius: 300, presence: 1 }, W, H);
+    const gone = soundParams({ x: W / 2, y: 0, radius: 300, presence: 0 }, W, H);
+    const none = soundParams(null, W, H);
+    const started = soundStart('demo');
+    const nodes = !!(snd && snd.filt && snd.filt.type === 'lowpass' && snd.gain);
+    soundTick({ x: W, y: 0, radius: 300, presence: 1 });
+    soundStop();
+    return { small, big, gone, none, started, nodes, stopped: snd === null };
+  });
+  ok('声音层：光越大滤波越亮、位置决定声像、在场度决定响度、无光静音',
+    soundT.big.cutoff > soundT.small.cutoff * 5 && soundT.small.pan < 0 && soundT.big.pan > 0
+      && soundT.gone.gain < soundT.big.gain && soundT.none.gain === 0, JSON.stringify(soundT));
+  ok('声音层：能建立 WebAudio 链（低通 + 增益）并能关掉', soundT.started && soundT.nodes && soundT.stopped, JSON.stringify(soundT));
+
+  const apiT = await page.evaluate(() => ({
+    fns: ['registerSource', 'useSource', 'image', 'video', 'story', 'sound', 'soundOff'].filter(k => typeof window.InkScroll[k] !== 'function'),
+    sources: Array.isArray(window.InkScroll.sources), gallery: !!document.getElementById('btn-gallery'),
+  }));
+  ok('对外 API：InkScroll 暴露内容源与声音层接口', apiT.fns.length === 0 && apiT.sources, JSON.stringify(apiT));
+
+  const galleryT = await page.evaluate(async () => {
+    stop(); await new Promise(r => setTimeout(r, 400));
+    document.body.classList.remove('wall'); S.wall = false; S.grid = false;
+    document.getElementById('btn-gallery').click(); await new Promise(r => setTimeout(r, 1200));
+    const r = { running: S.running, wall: S.wall, mode: S.mode };
+    stop(); await new Promise(r2 => setTimeout(r2, 300)); document.body.classList.remove('wall'); S.wall = false; S.grid = false; S._presetMode = false;
+    return r;
+  });
+  ok('首页「展厅模式」按钮真的能进投影墙（之前没绑事件）', galleryT.running === true && galleryT.wall === true && galleryT.mode === 'auto', JSON.stringify(galleryT));
   await page.goto(`${BASE}/index.html`); await sleep(1200);
 
   /* ═══════════════ 3. start / default mode ═══════════════ */

@@ -2,6 +2,25 @@
 
 遵循 [SemVer](https://semver.org/lang/zh-CN/)。每个版本都对应一组 CI 绿了的提交。
 
+## [0.2.6] — 2026-10-29
+
+**内容源接口：隐藏层不再只是那 5 张图**
+
+### 新增
+- `registerSource / useSource`：任何实现 `drawColor(g,W,H,t)` 的对象都能当隐藏层；可选 `drawMask / live / overlay / rawMask`
+- **上传**：拖图 / 视频进页面、首页「上传你的画」、按 `U`、`?img=<url>`；内容不离开浏览器
+- **文本源**：`?story=1` 内置《桃花源记》开篇（公有领域），竖排右起；墨层只画纸与行栏，**字要被光照到才显**；`?story=<txt>` 换任何文本
+- **声音层**：`?sound=demo|<url>`；光越大低通越亮、x 决定声像、在场度决定响度、无光静音
+- **视频活墨层**：`?livemask=1` 墨层每 400 ms 跟随视频，不再只取首帧
+- `window.InkScroll` 新增 `registerSource / useSource / image / video / story / sound / soundOff / sources`
+- `docs/SOURCES.md`
+
+### 修复
+- 首页「展厅模式」按钮从未绑定事件（死按钮）
+
+### 测试
+- 断言 263 → **273**（注册 / 活墨层 / 文本 / 拖放上传 / 声音参数与节点 / API / 展厅按钮）
+
 ## [0.2.5] — 2026-10-29
 
 **六份独立评审后的修复批次**（`docs/reviews/`）

@@ -701,6 +701,12 @@ body.wall{cursor:none}
   padding:22px 24px 18px;
   background:linear-gradient(to top,var(--parchment) 62%,rgba(245,244,237,0));}
 #btn-start{position:static;transform:none;left:auto;bottom:auto}
+#btn-upload{
+  font-family:var(--serif);font-size:.74rem;letter-spacing:.14em;
+  padding:13px 20px;border-radius:999px;cursor:pointer;
+  border:1px solid var(--cream-border);background:transparent;color:var(--stone);
+}
+#btn-upload:hover{border-color:var(--clay);color:var(--clay)}
 #btn-gallery{
   font-family:var(--serif);font-size:.74rem;letter-spacing:.14em;
   padding:13px 20px;border-radius:999px;cursor:pointer;
@@ -912,6 +918,8 @@ html[lang^="zh"] .overlay .sheet .sect-h{letter-spacing:.3em;text-transform:none
   <div class="cta-row">
     <button id="btn-start" data-i18n="btnStart">展开画卷</button>
     <button id="btn-gallery" type="button" data-i18n="ctaGallery">展厅模式</button>
+    <button id="btn-upload" type="button" data-i18n="ctaUpload">上传你的画</button>
+    <input id="file-in" type="file" accept="image/*,video/*" hidden>
   </div>
 
   <p class="hint" id="hint"></p>
@@ -1421,6 +1429,15 @@ const I18N = {
     outGrid:'校准网格',
     outStereo:'立体输出',
     outScene3D:'点云场景',
+    ctaUpload:'上传你的画',
+    srcUpload:'上传图 / 视频',
+    srcStory:'文本 · 桃花源记',
+    srcSound:'声音层',
+    outLiveMask:'视频活墨层',
+    fxSourceOn:'已换内容',
+    fxUploadFail:'这个文件读不了（支持图片与 mp4/webm）',
+    fxSoundOn:'声音层已开 · 光越大声越亮',
+    fxSoundNo:'此浏览器没有 WebAudio',
     helpKeys:'键盘',
     helpNote:'手电筒、手势、面庞、动影需要摄像头；眼动需要一张打印的 ArUco 标记；手机众光需要中继服务器。',
     helpBack:'返回标题',
@@ -1730,6 +1747,15 @@ const I18N = {
     outGrid:'校準網格',
     outStereo:'立體輸出',
     outScene3D:'點雲場景',
+    ctaUpload:'上傳你的畫',
+    srcUpload:'上傳圖 / 影片',
+    srcStory:'文本 · 桃花源記',
+    srcSound:'聲音層',
+    outLiveMask:'影片活墨層',
+    fxSourceOn:'已換內容',
+    fxUploadFail:'這個檔案讀不了（支援圖片與 mp4/webm）',
+    fxSoundOn:'聲音層已開 · 光越大聲越亮',
+    fxSoundNo:'此瀏覽器沒有 WebAudio',
     helpKeys:'鍵盤',
     helpNote:'手電筒、手勢、面龐、動影需要攝像頭；眼動需要一張列印的 ArUco 標記；手機眾光需要中繼伺服器。',
     helpBack:'返回標題',
@@ -2038,6 +2064,15 @@ const I18N = {
     outGrid:'Calibration grid',
     outStereo:'Stereo output',
     outScene3D:'Point-cloud scene',
+    ctaUpload:'Upload your own',
+    srcUpload:'Upload image / video',
+    srcStory:'Text · Peach Blossom Spring',
+    srcSound:'Sound layer',
+    outLiveMask:'Live video mask',
+    fxSourceOn:'content changed',
+    fxUploadFail:'cannot read this file (images and mp4/webm)',
+    fxSoundOn:'sound layer on · bigger light, brighter sound',
+    fxSoundNo:'no WebAudio in this browser',
     helpKeys:'Keyboard',
     helpNote:'Flashlight, hand, face and shadow need a camera; gaze needs a printed ArUco marker; many-lights needs a relay server.',
     helpBack:'Back to title',
@@ -2155,6 +2190,7 @@ const S={
   silence:{since:0,acted:false,needMs:20000,on:false},
   daily:{on:false,seed:0},
   offering:false, offerings:[],
+  source:null, sourceId:null, liveMask:false, maskEveryMs:400, _maskT:0,
   repel:false, summon:false, summonDots:[], write:false, writeW:1,
   ritual:false, ritualTaps:[], ritualUntil:0,
   together:false, togetherNeed:2, togetherLow:0, togetherHinted:false,
@@ -2235,6 +2271,8 @@ function pushURL(){
     if(S.summon) forms.push('summon'); if(S.write) forms.push('write'); if(S.ritual) forms.push('ritual');
     if(forms.length===1) q.set('form',forms[0]); else if(forms.length>1) q.set('forms',forms.join(','));
     if(S.delayMs) q.set('delay',String(S.delayMs));
+    if(S.sourceId==='story') q.set('story','1'); else q.delete('story');
+    if(snd) q.set('sound',snd.url); else q.delete('sound');
     history.replaceState(null,'','?'+q.toString());
   }catch(e){}
 }
@@ -2408,7 +2446,163 @@ function drawCloud(g,W,H,t,mono,opt){
   }
 }
 
-/* 视频内容层：?video=<url> 把任意 mp4/webm 当"彩色层"，墨层从首帧生成。 */
+/* ═══════════════════════════════════════════════════════════
+   内容源（Source）—— 隐藏层的可插拔接口。
+   评审指出：drawScene / genHidden 是两条 if 链，每加一种内容要改两处。
+   现在任何内容只要实现 drawColor(ctx,W,H,t) 就能进来；可选 drawMask / live / overlay / rawMask。
+     · drawColor(g,W,H,t)   画彩色层（被光揭开后看到的）
+     · drawMask(g,w,h,t)    画给墨层用的底图（不给就用 drawColor；想"藏住"内容就在这里画空白）
+     · live:true            每 maskEveryMs 重算墨层（视频 / 生成内容）
+     · overlay:true         叠水墨粒子氛围
+     · rawMask:true         墨层不走风格滤镜（点阵本身就是墨）
+   对外：window.InkScroll.registerSource(id, src) / useSource(id)
+   ═══════════════════════════════════════════════════════════ */
+const SOURCES={};
+function registerSource(id, src){
+  if(!id || !src || typeof src.drawColor!=='function') return false;
+  SOURCES[String(id)]=Object.assign({id:String(id), name:String(id), live:false, overlay:false, rawMask:false}, src);
+  return true;
+}
+function useSource(id){
+  if(id===null||id===undefined||id===''){
+    if(S.source && S.source.cln){ try{ S.source.cln(); }catch(e){} }
+    S.source=null; S.sourceId=null;
+    if(scCvs){ drawScene(performance.now()/1000); target=scCvs; genHidden(); }
+    return true;
+  }
+  const src=SOURCES[String(id)]; if(!src) return false;
+  if(S.source && S.source!==src && S.source.cln){ try{ S.source.cln(); }catch(e){} }
+  S.source=src; S.sourceId=src.id;
+  if(src.init){ try{ src.init(); }catch(e){} }
+  if(scCvs){ drawScene(performance.now()/1000); target=scCvs; genHidden(); }
+  flashHint(t('fxSourceOn')+' · '+(src.name||src.id), 1500);
+  return true;
+}
+
+/* ── 上传：拖进来 / 选文件 / ?img=<url> —— 任何图、任何视频都能被光揭开 ── */
+function attachImage(url, name){
+  const img=new Image(); img.crossOrigin='anonymous';
+  img.onload=()=>{
+    registerSource('upload',{ name:name||t('srcUpload'), overlay:true, img,
+      drawColor(g,W,H){ const r=fitScene(img,W,H); g.drawImage(img,r.dx,r.dy,r.dw,r.dh); } });
+    useSource('upload');
+  };
+  img.onerror=()=>flashHint(t('fxUploadFail'),2200);
+  img.src=url;
+}
+function attachFile(file){
+  if(!file){ return false; }
+  const kind=String(file.type||'');
+  if(kind.indexOf('video/')===0){
+    if(S.video){ try{ S.video.pause(); S.video.remove(); }catch(e){} S.video=null; }
+    useSource(null); videoAttach(URL.createObjectURL(file)); S.liveMask=true;
+    flashHint(t('fxSourceOn')+' · '+file.name, 1500);
+    return true;
+  }
+  if(kind.indexOf('image/')===0){ attachImage(URL.createObjectURL(file), file.name); return true; }
+  flashHint(t('fxUploadFail'),2200); return false;
+}
+function openFilePicker(){ const i=document.getElementById('file-in'); if(i) i.click(); }
+document.addEventListener('dragover',e=>{ e.preventDefault(); });
+document.addEventListener('drop',e=>{
+  e.preventDefault();
+  const f=e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+  if(f && attachFile(f) && !S.running){ try{ start(); }catch(err){} }
+});
+
+/* ── 历史文本：文字是隐藏层，光照到哪一句，哪一句显出来 ──
+   内置《桃花源记》开篇（陶渊明，公元 5 世纪，公有领域）；?story=<url> 可换成任何 txt。 */
+const STORY_DEMO={ title:'桃花源记', author:'陶渊明',
+  text:'晋太元中，武陵人捕鱼为业。缘溪行，忘路之远近。忽逢桃花林，夹岸数百步，中无杂树，芳草鲜美，落英缤纷。渔人甚异之，复前行，欲穷其林。林尽水源，便得一山，山有小口，仿佛若有光。便舍船，从口入。初极狭，才通人。复行数十步，豁然开朗。土地平旷，屋舍俨然，有良田美池桑竹之属。阡陌交通，鸡犬相闻。' };
+function layoutVertical(g,W,H,story,colour){
+  const pad=Math.round(Math.min(W,H)*0.07);
+  const fs=clampN(Math.round(H/22), 16, 64), lh=fs*1.18, colW=fs*1.65;
+  const perCol=Math.max(4, Math.floor((H-2*pad)/lh));
+  g.textAlign='center'; g.textBaseline='middle';
+  let x=W-pad-fs/2;
+  if(story.title){                                        // 题目一列（朱）
+    g.fillStyle=colour?'#b8583a':'#1a1a18'; g.font=`600 ${fs}px "Noto Serif SC","Noto Serif TC",serif`;
+    const tt=(story.title+(story.author?'　'+story.author:'')).split('');
+    tt.forEach((ch,i)=>g.fillText(ch, x, pad+fs/2+i*lh));
+    x-=colW*1.3;
+  }
+  g.fillStyle=colour?'#1a1a18':'#1a1a18'; g.font=`500 ${fs}px "Noto Serif SC","Noto Serif TC",serif`;
+  const chars=String(story.text||'').replace(/\s+/g,'').split('');
+  for(let i=0;i<chars.length;i++){
+    const col=Math.floor(i/perCol), row=i%perCol;
+    const cx=x-col*colW; if(cx<pad) break;
+    g.fillText(chars[i], cx, pad+fs/2+row*lh);
+  }
+  return {fs, perCol, cols:Math.ceil(chars.length/perCol)};
+}
+function storyUse(story){
+  const st=story||STORY_DEMO;
+  registerSource('story',{ name:st.title||t('srcStory'), overlay:false, story:st,
+    drawColor(g,W,H){ g.fillStyle='#f5f4ed'; g.fillRect(0,0,W,H); layoutVertical(g,W,H,st,true); },
+    drawMask(g,w,h){                                   // 墨层只画纸和淡淡的行栏：字要被光照到才显
+      g.fillStyle='#f5f4ed'; g.fillRect(0,0,w,h);
+      g.strokeStyle='rgba(26,26,24,.10)'; g.lineWidth=1;
+      const pad=Math.round(Math.min(w,h)*0.07), colW=clampN(Math.round(h/22),16,64)*1.65;
+      for(let x=w-pad;x>pad;x-=colW){ g.beginPath(); g.moveTo(x,pad); g.lineTo(x,h-pad); g.stroke(); }
+    } });
+  return useSource('story');
+}
+async function storyLoad(url){
+  if(!url || url==='1' || url==='demo'){ return storyUse(STORY_DEMO); }
+  try{
+    const txt=await (await fetch(url)).text();
+    const lines=txt.split(/\r?\n/).filter(l=>l.trim());
+    return storyUse({ title:lines[0]||'', author:'', text:lines.slice(1).join('') });
+  }catch(e){ flashHint(t('fxUploadFail'),2200); return false; }
+}
+
+/* ── 声音层：光不只揭开画，也揭开声音 ——
+   光圈越大滤波越亮、位置决定声像、在场度决定响度。?sound=demo（五声 drone）或 ?sound=<url>。 */
+let snd=null;
+function soundParams(sp,W,H){
+  const r=sp?clampN((sp.radius||0)/(Math.min(W,H)*0.5),0,1):0;
+  const x=sp?clampN(sp.x/Math.max(1,W),0,1):0.5;
+  const pr=(sp&&sp.presence!=null)?clampN(sp.presence,0,1):1;
+  return { cutoff:Math.round(180*Math.pow(40,r)), pan:+(x*2-1).toFixed(3), gain:+(sp?(0.06+0.5*r*pr):0).toFixed(3) };
+}
+function soundStart(url){
+  soundStop();
+  try{
+    const AC=window.AudioContext||window.webkitAudioContext; if(!AC) throw new Error('no AudioContext');
+    const C=new AC();
+    const filt=C.createBiquadFilter(); filt.type='lowpass'; filt.Q.value=0.7; filt.frequency.value=400;
+    const pan=C.createStereoPanner?C.createStereoPanner():null;
+    const gain=C.createGain(); gain.gain.value=0;
+    let node, el=null;
+    if(url && url!=='demo' && url!=='1'){
+      el=document.createElement('audio'); el.src=url; el.loop=true; el.crossOrigin='anonymous';
+      node=C.createMediaElementSource(el); el.play().catch(()=>{});
+    }else{                                                  // 五声 drone：G A C D E
+      const mix=C.createGain(); mix.gain.value=0.22;
+      [196,220,261.6,293.7,329.6].forEach((f,i)=>{ const o=C.createOscillator(); o.type=i%2?'triangle':'sine';
+        o.frequency.value=f*(i>2?0.5:1); o.connect(mix); o.start(); });
+      node=mix;
+    }
+    node.connect(filt); if(pan){ filt.connect(pan); pan.connect(gain); } else filt.connect(gain);
+    gain.connect(C.destination);
+    snd={C,filt,pan,gain,el,on:true,url:url||'demo'};
+    if(C.resume) C.resume().catch(()=>{});
+    flashHint(t('fxSoundOn'),1500);
+    return true;
+  }catch(e){ flashHint(t('fxSoundNo'),2200); snd=null; return false; }
+}
+function soundStop(){ if(!snd) return; try{ snd.el&&snd.el.pause(); snd.C.close(); }catch(e){} snd=null; }
+function soundTick(sp){
+  if(!snd||!snd.on) return;
+  const p=soundParams(sp,DW,DH), now=snd.C.currentTime;
+  try{
+    snd.filt.frequency.setTargetAtTime(p.cutoff, now, 0.08);
+    if(snd.pan) snd.pan.pan.setTargetAtTime(p.pan, now, 0.08);
+    snd.gain.gain.setTargetAtTime(p.gain, now, 0.15);
+  }catch(e){}
+}
+
+/* 视频内容层：?video=<url> 把任意 mp4/webm 当"彩色层"；墨层默认取首帧，?livemask=1 则每 400ms 跟随。 */
 function videoAttach(url){
   try{
     const v=document.createElement('video');
@@ -2422,6 +2616,12 @@ function videoAttach(url){
 function drawScene(t){
   const g=scCtx,W=DW,H=DH;
   if(scCvs.width!==W||scCvs.height!==H){scCvs.width=W;scCvs.height=H;}else{g.clearRect(0,0,W,H);}
+  if(S.source){                                            // 可插拔内容源优先
+    try{ S.source.drawColor(g,W,H,t); }catch(e){}
+    if(S.source.overlay) animateOverlay(g,W,H,0,0,W,H,t);
+    S.imgBounds={x:0,y:0,w:W,h:H};
+    return;
+  }
   if(S.video && S.video.readyState>=2){
     const vw=S.video.videoWidth, vh=S.video.videoHeight;
     const k=Math.max(W/vw,H/vh), dw=vw*k, dh=vh*k;
@@ -2608,7 +2808,10 @@ function genHidden(){
   wkCtx=wkCvs.getContext('2d',{willReadFrequently:true});
   const tmpCtx=mkCtx;
   tmpCtx.fillStyle='#1a1a18';tmpCtx.fillRect(0,0,mw,mh);
-  if(S.video && S.video.readyState>=2){
+  if(S.source){
+    const tm=performance.now()/1000;                      // live 源的墨层要跟着时间走，不能永远传 0
+    try{ if(typeof S.source.drawMask==='function') S.source.drawMask(tmpCtx,mw,mh,tm); else S.source.drawColor(tmpCtx,mw,mh,tm); }catch(e){}
+  }else if(S.video && S.video.readyState>=2){
     const vw=S.video.videoWidth, vh=S.video.videoHeight, k=Math.max(mw/vw,mh/vh);
     tmpCtx.drawImage(S.video,(mw-vw*k)/2,(mh-vh*k)/2,vw*k,vh*k);
   }else if(S.scene===5){
@@ -2626,7 +2829,7 @@ function genHidden(){
     if(img){const r=fitScene(img,mw,mh);tmpCtx.drawImage(img,0,0,img.naturalWidth,img.naturalHeight,r.dx,r.dy,r.dw,r.dh);}
   }
   const src=tmpCtx.getImageData(0,0,mw,mh);
-  if(S.scene===6&&!S.video){ hiCtx.putImageData(src,0,0); return; }   // 点云：点阵本身就是墨层
+  if((S.source&&S.source.rawMask) || (S.scene===6&&!S.video&&!S.source)){ hiCtx.putImageData(src,0,0); return; }   // 点阵本身就是墨层
   if(S.style==='edges')hiCtx.putImageData(sobel(src,mw,mh),0,0);
   else if(S.style==='sketch')hiCtx.putImageData(sk(src,mw,mh),0,0);
   else if(S.style==='paper')hiCtx.putImageData(pap(src,mw,mh),0,0);
@@ -3401,7 +3604,15 @@ window.InkScroll={
   splat:()=>extIngest({cmd:'splat'}),
   paint:()=>extIngest({cmd:'paint'}),
   ingest:extIngest,
-  get state(){ return {mode:S.mode, scene:S.scene, style:S.style, x:S.bridge.x, y:S.bridge.y, r:S.bridge.r}; },
+  // 内容源：任何图 / 视频 / 文本 / 生成内容都能被光揭开
+  registerSource, useSource,
+  image:(url,name)=>attachImage(url,name),
+  video:(url)=>{ useSource(null); videoAttach(url); S.liveMask=true; },
+  story:(text,title,author)=>storyUse(text?{title:title||'',author:author||'',text}:STORY_DEMO),
+  sound:(url)=>soundStart(url||'demo'),
+  soundOff:()=>soundStop(),
+  get sources(){ return Object.keys(SOURCES); },
+  get state(){ return {mode:S.mode, scene:S.scene, style:S.style, source:S.sourceId, sound:!!snd, x:S.bridge.x, y:S.bridge.y, r:S.bridge.r}; },
 };
 
 /* ── NFC 贴纸（Chrome Android）：贴一下换画 ── */
@@ -4794,7 +5005,12 @@ function processFrame(){
     } else { S.silence.since=0; S.silence.acted=false; }
   }
   if(S.mode==='bridge'||S.mode==='osc') pushState(false);   // 闭环回传（节流 500ms）
-  if(S.running) pushURL();                                  // 状态进 URL（节流 400ms）      // 契约归一化（id/presence/state 在这里补全）
+  if(S.running) pushURL();                                  // 状态进 URL（节流 400ms）
+  if((S.source&&S.source.live) || (S.video&&S.liveMask)){   // 活墨层：视频 / 生成内容的墨层跟着内容走
+    const nowM=performance.now();
+    if(nowM-(S._maskT||0) > (S.maskEveryMs||400)){ S._maskT=nowM; target=scCvs; genHidden(); }
+  }
+  if(snd) soundTick(spots[0]||null);                        // 声音层跟着第一盏光
   // 留白守卫 — don't let a crowd floodlight the whole scroll; shrink radii once total revealed area passes ~38% of the painting
   if(S.imgBounds && spots.length>2){ const ib=S.imgBounds, maxA=ib.w*ib.h*0.38; let area=0; for(const s of spots){const r=s.radius||S.radius;area+=Math.PI*r*r;}
     if(area>maxA){ const k=Math.sqrt(maxA/area); for(const s of spots)s.radius=(s.radius||S.radius)*k; } }
@@ -5153,6 +5369,7 @@ async function ensureCam(){
 }
 async function start(){
   setTimeout(()=>{ try{ showOnboard(); }catch(e){} }, 900);   // 开卷后 0.9s 再提示
+  if(S._soundURL && !snd){ try{ soundStart(S._soundURL); }catch(e){} }
   const ss = document.getElementById('start-screen');
   ss.classList.add('leaving');
   await new Promise(r=>setTimeout(r,300));
@@ -5416,6 +5633,10 @@ function buildHelpModes(){
     mk(t('outGrid')+' · '+(S.grid?'on':'off'), S.grid, ()=>{ S.grid=!S.grid; });
     mk(t('outStereo')+' · '+(S.stereo||'off'), !!S.stereo, ()=>{ S.stereo=S.stereo?null:(S.scene===6?'sbs':'anaglyph'); });
     mk(t('outScene3D')+' · '+(S.scene===6?'on':'off'), S.scene===6, ()=>{ changeScene(S.scene===6?0:6); });
+    mk(t('srcUpload')+(S.sourceId==='upload'?' · on':''), S.sourceId==='upload', ()=>{ openFilePicker(); });
+    mk(t('srcStory')+' · '+(S.sourceId==='story'?'on':'off'), S.sourceId==='story', ()=>{ if(S.sourceId==='story') useSource(null); else storyUse(STORY_DEMO); });
+    mk(t('srcSound')+' · '+(snd?'on':'off'), !!snd, ()=>{ if(snd) soundStop(); else soundStart('demo'); });
+    mk(t('outLiveMask')+' · '+(S.liveMask?'on':'off'), S.liveMask, ()=>{ S.liveMask=!S.liveMask; });
   }
   const forms=document.getElementById('help-forms');
   if(forms){
@@ -5642,6 +5863,7 @@ document.addEventListener('keydown',e=>{
       break;
     case'p':if(e.shiftKey&&S.mode==='phone'&&S.phone.room) showPhonePair(phoneUrl());break;
     case'i':togglePaint();break;
+    case'u':openFilePicker();break;
     case'o':S.paintFade=S.paintFade?0:0.01;flashHint(t(S.paintFade?'fxFadeOn':'fxFadeOff'));break;
     case'g':if(e.shiftKey&&S.wall){ S.grid=!S.grid; flashHint(S.grid?'grid on':'grid off',900); break; }
       S.glow=!S.glow;if(!S.glow&&glowCtx)glowCtx.clearRect(0,0,glowCvs.width,glowCvs.height);flashHint(t(S.glow?'fxGlowOn':'fxGlowOff'));break;
@@ -5746,6 +5968,11 @@ function rebuildModeCards(){
    Bootstrap
    ─────────────────────────────────────────────────────────── */
 document.getElementById('btn-start').addEventListener('click',start);
+{ const bg=document.getElementById('btn-gallery');                       // 评审发现：这个按钮之前没绑任何事件
+  if(bg) bg.addEventListener('click',()=>{ applyPreset('kiosk'); start(); }); }
+{ const bu=document.getElementById('btn-upload'), fi=document.getElementById('file-in');
+  if(bu) bu.addEventListener('click',()=>openFilePicker());
+  if(fi) fi.addEventListener('change',()=>{ const f=fi.files&&fi.files[0]; if(f && attachFile(f) && !S.running){ start(); } fi.value=''; }); }
 document.getElementById('err-mouse').addEventListener('click',()=>{
   S.mode='mouse';
   hideError();
@@ -5823,6 +6050,10 @@ function applyDeepLink(){
     if(q.get('debug')==='1') S.debug=true;
     if(q.get('effects')==='1'){ S.paint=true;S.glow=true;S.mirror=true;S.timeTint=true; }
     const vid2=q.get('video'); if(vid2) videoAttach(vid2);
+    if(q.get('livemask')==='1') S.liveMask=true;
+    const img2=q.get('img'); if(img2) attachImage(img2);
+    const story2=q.get('story'); if(story2) storyLoad(story2);
+    const snd2=q.get('sound'); if(snd2){ S._soundURL=snd2; }   // 要用户手势：开卷时再真正启动
   }catch(e){}
 }
 
