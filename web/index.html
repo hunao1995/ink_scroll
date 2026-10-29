@@ -2207,6 +2207,7 @@ const S={
   silence:{since:0,acted:false,needMs:20000,on:false},
   daily:{on:false,seed:0},
   offering:false, offerings:[],
+  clock0: Date.now()/1000 - performance.now()/1000,   // 墙钟偏移：多机点云漂移同相
   source:null, sourceId:null, liveMask:false, maskEveryMs:400, _maskT:0,
   repel:false, summon:false, summonDots:[], write:false, writeW:1,
   ritual:false, ritualTaps:[], ritualUntil:0,
@@ -2439,7 +2440,7 @@ function drawCloud(g,W,H,t,mono,opt){
   const sPitch=soundOn?clampN((A.pitch?Math.log2(A.pitch/220)/2:-1e9),0,1):0;
   const sLevel=soundOn?(A.level||0):0;
   const grab=(S.mode==='hand' && S.hlm)?(S.grab!=null?S.grab:0.5):0;
-  const drift=V.frozen?0:Math.sin(t*0.24)*0.22;
+  const drift=V.frozen?0:Math.sin((t+(S.clock0||0))*0.24)*0.22;   // 相位按墙钟：两台机器各自开页也同步
   const yaw=(S.mouseX/DW-0.5)*2.2 + drift + dolly*0.55 + (O.eyeYaw||0) + (V.yaw||0);
   const pitch=-(S.mouseY/DH-0.5)*1.1 + 0.30 + (V.pitch||0) + sLevel*0.35;
   const cy=Math.cos(yaw), sy=Math.sin(yaw), cp=Math.cos(pitch), sp=Math.sin(pitch);
@@ -2905,6 +2906,7 @@ function pap(d,w,h){
    Flashlight detection (O(n) histogram percentile)
    ─────────────────────────────────────────────────────────── */
 function spF(id){
+  if(!id||!id.data) return null;                 // 还没拿到帧：不抛，等下一帧
   const dd=id.data,len=dd.length/4,lu=new Uint8Array(len);
   const hist=new Uint32Array(256);
   for(let i=0;i<len;i++){
@@ -4089,7 +4091,7 @@ const M={
     meter(){ return {label:t('meterLevel'), value:S.audio.level}; },
   },
   tilt:{
-    icon:'tilt',nameKey:'modeTilt',group:'free',
+    icon:'tilt',nameKey:'modeTilt',group:'free',fallback:'hint',
     init(){ tiltStart(); },
     spot(){ const T=S.tilt;
       if(!T.ready||performance.now()-T.last>1600) return null;
@@ -4102,7 +4104,7 @@ const M={
     ex(){ return S.tilt.ready?'':'📐 '+t('tiltCenter'); },
   },
   motion:{
-    icon:'motion',nameKey:'modeMotion',group:'cam',needCam:true,
+    icon:'motion',nameKey:'modeMotion',group:'cam',fallback:'hint',needCam:true,
     init(){ motionReset(); },
     spot(){ motionTick(); const m=S.motion;
       if(!m.seen) return null;
@@ -4112,7 +4114,7 @@ const M={
     meter(){ return {label:t('meterLevel'), value:S.motion.level}; },
   },
   hand:{
-    icon:'hand',nameKey:'modeHand',group:'cam',needCam:true,
+    icon:'hand',nameKey:'modeHand',group:'cam',fallback:'hint',needCam:true,
     init(){iH();},
     spot(id){if(S.hpos&&S.gesture!=='fist')return{x:S.hpos.x,y:S.hpos.y,radius:S.gesture==='point'?25:S.radius};return null;},
     cln(){hr=false;S.hlm=null;S.hpos=null;S.gesture='none';},  // hands stays warm: closing mid-frame breaks the wasm loader
@@ -4123,7 +4125,7 @@ const M={
     },
   },
   face:{
-    icon:'face',nameKey:'modeFace',group:'cam',needCam:true,
+    icon:'face',nameKey:'modeFace',group:'cam',fallback:'hint',needCam:true,
     init(){ faceStart(); },
     spot(){ const F=S.face;
       if(!F.ready||!F.seen) return null;
@@ -4138,7 +4140,7 @@ const M={
     ex:()=>'',
   },
   gaze:{
-    icon:'gaze',nameKey:'modeGaze',group:'gear',needCam:true,needsPixels:true,
+    icon:'gaze',nameKey:'modeGaze',group:'gear',fallback:'pointer',needCam:true,needsPixels:true,
     init(){ enterGaze(); },
     spot(fd){
       if(!S.gazeReady || !gazeFit || !arDetector) return null;
@@ -4215,14 +4217,14 @@ const M={
     meter(){ return {label:t('meterBreath'), value:breathLevel()}; },
   },
   speech:{
-    icon:'speech',nameKey:'modeSpeech',group:'free',needMic:true,
+    icon:'speech',nameKey:'modeSpeech',group:'free',fallback:'hint',needMic:true,
     init(){ speechStart(); },
     spot(){ return {x:S.mouseX,y:S.mouseY,radius:S.radius}; },
     cln(){ speechStop(); },
     ex(){ return S.speech.on?('🗣 '+(S.speech.last||t('fxSpeechListening')).slice(0,14)):('🗣 '+t('fxSpeechFail')); },
   },
   shake:{
-    icon:'shake',nameKey:'modeShake',group:'free',
+    icon:'shake',nameKey:'modeShake',group:'free',fallback:'hint',
     init(){ shakeStart(); },
     spot(){ return {x:S.mouseX,y:S.mouseY,radius:S.radius}; },
     cln(){ shakeStop(); },
@@ -4238,7 +4240,7 @@ const M={
     ex(){ return S.gamepad.seen?'':'🎮 '+t('fxNoGamepad'); },
   },
   midi:{
-    icon:'midi',nameKey:'modeMidi',group:'gear',
+    icon:'midi',nameKey:'modeMidi',group:'gear',fallback:'hint',
     init(){ midiStart(); },
     spot(){ const M2=S.midi; return M2.seen?{x:M2.nx*DW,y:M2.ny*DH,radius:S.radius*M2.r}:null; },
     cln(){ midiStop(); },
@@ -4246,14 +4248,14 @@ const M={
   },
   /* ── 第三批：插装置 / 蓝牙 / 通用桥 / NFC / 眨眼 / 环境光 / 拍手 ── */
   hid:{
-    icon:'gamepad',nameKey:'modeHid',group:'gear',
+    icon:'gamepad',nameKey:'modeHid',group:'gear',fallback:'hint',
     init(){ hidStart(); },
     spot(){ const H=S.hid; return H&&H.seen?{x:H.x*DW,y:H.y*DH,radius:S.radius*H.r}:null; },
     cln(){ hidStop(); },
     ex(){ return (S.hid&&S.hid.seen)?'':(S.hid?'':'🕹 '+t('fxHidWait')); },
   },
   ble:{
-    icon:'midi',nameKey:'modeBle',group:'gear',
+    icon:'midi',nameKey:'modeBle',group:'gear',fallback:'hint',
     init(){ bleStart(); },
     spot(){ const B=S.ble; return B&&B.seen?{x:B.x*DW,y:B.y*DH,radius:S.radius*B.r}:null; },
     cln(){ bleStop(); },
@@ -4261,14 +4263,14 @@ const M={
     meter(){ return {label:t('meterHr'), value:S.ble&&S.ble.hr?clampN(S.ble.hr/160,0,1):0}; },
   },
   nfc:{
-    icon:'dwell',nameKey:'modeNfc',group:'gear',
+    icon:'dwell',nameKey:'modeNfc',group:'gear',fallback:'hint',
     init(){ nfcStart(); },
     spot(){ return {x:S.mouseX,y:S.mouseY,radius:S.radius}; },
     cln(){ nfcStop(); },
     ex(){ return '🏷 '+(S.nfc.last||t('fxNfcWait')); },
   },
   eyes:{
-    icon:'face',nameKey:'modeEyes',group:'cam',needCam:true,
+    icon:'face',nameKey:'modeEyes',group:'cam',fallback:'hint',needCam:true,
     init(){ eyesStart(); },
     spot(){ const F=S.face;
       if(!F.ready||!F.seen) return null;
@@ -4278,7 +4280,7 @@ const M={
     meter(){ return {label:t('meterBlink'), value:clampN((S.eyes.ear||0)*3,0,1)}; },
   },
   light:{
-    icon:'osc',nameKey:'modeLight',group:'free',
+    icon:'osc',nameKey:'modeLight',group:'free',fallback:'pointer',
     init(){ lightStart(); },
     spot(){ const L=S.light;
       const lux=L.ok?Math.max(0,L.lux):200;
@@ -4427,7 +4429,7 @@ const M={
   },
   /* ── 需要本机跑一个小脚本：OSC / TouchDesigner ── */
   osc:{
-    icon:'osc',nameKey:'modeOsc',group:'local',
+    icon:'osc',nameKey:'modeOsc',group:'local',fallback:'hint',
     init(){ oscStart(); },
     spot(){ const O=S.osc; return (O.t&&performance.now()-O.t<2200)?{x:O.x*DW,y:O.y*DH,radius:S.radius*O.r}:null; },
     cln(){ oscStop(); },
@@ -4568,6 +4570,49 @@ function pushSplat(x,y,power,spin){
   if(S.phone.splats.length>40) S.phone.splats.splice(0, S.phone.splats.length-40);
 }
 // 笔锋 — build the reveal path for a spot: 0=disc, 1=streak (along motion), 2=scatter
+/* ── 形式的可见签名 ──
+   延迟：现在的位置画虚线环（光还没到）     共处：虚线环 + 人数格（● ○）
+   仪式：已点的位置留墨点，开启后一圈倒计时  静默：顶部一道渐长的静默弧
+   日课：右下角一方日期印                    驱赶：环外一圈外推短刺            */
+function drawFormSignatures(g){
+  const live=S._lastSpots||[];
+  const dash=(x,y,r,a)=>{ g.save(); g.setLineDash([6*S.dpr,5*S.dpr]); g.strokeStyle='rgba(26,26,24,'+a+')'; g.lineWidth=1.5*S.dpr;
+    g.beginPath(); g.arc(x,y,r,0,Math.PI*2); g.stroke(); g.restore(); };
+  if(S.delayMs>0 && live.length){                       // 延迟：虚线环是「现在」，实环是「8 秒前的你」
+    for(const sp of live.slice(0,3)) dash(sp.x,sp.y,sp.radius,0.55);
+  }
+  if(S.together && live.length && S.togetherLow>0.02){  // 共处：被锁住时看得见「还差一个人」
+    const sp=live[0]; dash(sp.x,sp.y,sp.radius,0.35+0.4*S.togetherLow);
+    const n=S.togetherNeed||2, have=Math.min(live.length,n), rr=5*S.dpr;
+    for(let i=0;i<n;i++){ g.beginPath(); g.arc(sp.x-(n-1)*rr*1.6+i*rr*3.2, sp.y+sp.radius+16*S.dpr, rr, 0, Math.PI*2);
+      if(i<have){ g.fillStyle='rgba(201,100,66,.9)'; g.fill(); } else { g.strokeStyle='rgba(26,26,24,.6)'; g.lineWidth=1.2*S.dpr; g.stroke(); } }
+  }
+  if(S.ritual){                                          // 仪式：三处墨点 + 开启倒计时
+    const now=performance.now();
+    for(const tp of (S.ritualTaps||[])){ g.fillStyle='rgba(26,26,24,.75)'; g.beginPath(); g.arc(tp.x,tp.y,6*S.dpr,0,Math.PI*2); g.fill();
+      g.strokeStyle='rgba(201,100,66,.6)'; g.lineWidth=1.2*S.dpr; g.beginPath(); g.arc(tp.x,tp.y,13*S.dpr,0,Math.PI*2); g.stroke(); }
+    if(S.ritualUntil>now){ const k=(S.ritualUntil-now)/10000; g.save(); g.strokeStyle='rgba(201,100,66,.8)'; g.lineWidth=3*S.dpr;
+      g.beginPath(); g.arc(DW/2,46*S.dpr,18*S.dpr,-Math.PI/2,-Math.PI/2+Math.PI*2*k); g.stroke(); g.restore(); }
+    else if(live.length){ dash(live[0].x,live[0].y,live[0].radius,0.35); }
+  }
+  if(S.silence && S.silence.on){                          // 静默：安静了多久，一道弧告诉你
+    const q=S.silence.since?clampN((performance.now()-S.silence.since)/(S.silence.needMs||20000),0,1):0;
+    g.save(); g.lineCap='round'; g.strokeStyle='rgba(26,26,24,.22)'; g.lineWidth=7*S.dpr; g.beginPath(); g.moveTo(DW*0.2,12*S.dpr); g.lineTo(DW*0.8,12*S.dpr); g.stroke();
+    g.strokeStyle='rgba(201,100,66,.9)'; g.beginPath(); g.moveTo(DW*0.2,12*S.dpr); g.lineTo(DW*(0.2+0.6*Math.max(q,0.03)),12*S.dpr); g.stroke(); g.restore();
+  }
+  if(S.daily && S.daily.on){                              // 日课：一方日期印
+    const lab=dailySeed().label, w=Math.round(118*S.dpr), h=Math.round(34*S.dpr), x=DW-w-16*S.dpr, y=DH-h-16*S.dpr;
+    g.save(); g.fillStyle='rgba(184,88,58,.94)'; g.fillRect(x,y,w,h);
+    g.fillStyle='rgba(245,244,237,.97)'; g.font=`700 ${Math.round(15*S.dpr)}px ui-monospace,monospace`; g.textAlign='center'; g.textBaseline='middle';
+    g.fillText(lab, x+w/2, y+h/2+0.5); g.restore();
+  }
+  if(S.repel && live.length){                             // 驱赶：环外一圈外推短刺
+    const sp=live[0]; g.save(); g.lineCap='round'; g.strokeStyle='rgba(26,26,24,.7)'; g.lineWidth=3*S.dpr; g.beginPath();
+    for(let i=0;i<16;i++){ const a=i/16*Math.PI*2, r0=sp.radius+5*S.dpr, r1=sp.radius+26*S.dpr;
+      g.moveTo(sp.x+Math.cos(a)*r0, sp.y+Math.sin(a)*r0); g.lineTo(sp.x+Math.cos(a)*r1, sp.y+Math.sin(a)*r1); }
+    g.stroke(); g.restore();
+  }
+}
 function buildSpotPath(s){
   const r=s.radius||S.radius, b=s.brush||0, ex=s.extent;
   if(ex && ex.shape==='band' || ex && ex.shape==='rect'){        // 带 / 矩形窗：按 ang 旋转
@@ -5069,6 +5114,9 @@ function processFrame(){
   }
   if(S.mode==='bridge'||S.mode==='osc') pushState(false);   // 闭环回传（节流 500ms）
   if(S.running) pushURL();                                  // 状态进 URL（节流 400ms）
+  if(S.wall){ const nowH=performance.now(); if(nowH-(S._hbT||0)>5000){ S._hbT=nowH;   // kiosk 心跳：/health 能看到画面在动
+    try{ fetch('/send?room=heartbeat',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({type:'hb',fps:S.fps||0,mode:S.mode,scene:S.scene,t:Date.now()})}).catch(()=>{}); }catch(e){} } }
   if((S.source&&S.source.live) || (S.video&&S.liveMask)){   // 活墨层：视频 / 生成内容的墨层跟着内容走
     const nowM=performance.now();
     if(nowM-(S._maskT||0) > (S.maskEveryMs||400)){ S._maskT=nowM; target=scCvs; genHidden(); }
@@ -5235,6 +5283,8 @@ function processFrame(){
     for(const st of S.geo){ ctx.drawImage(glowSprite(st.hue), st.x*DW-11,st.y*DH-11,22,22); } }); }
   // 击节点墨 — a pulsing beat ring (display owns the clock)
   if(S.beat.on){ const ph=((performance.now()-S.beat.t0)%S.beat.period)/S.beat.period; ctx.save(); ctx.strokeStyle='rgba(201,100,66,'+(0.25+(1-ph)*0.5)+')'; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(DW/2,46,14+(1-ph)*26,0,Math.PI*2); ctx.stroke(); ctx.restore(); }
+
+  drawFormSignatures(ctx);                       // 形式要「在眼睛里存在」：每种形式一个可见签名
 
   // 校准网格：四角标 A/B/C/D、中心十字、1/3 与 2/3 分割线
   if(S.grid){
@@ -5486,7 +5536,15 @@ function stop(){
   announce(t('credit'));
 }
 let _privacyShown=false;
-async function wM(name,opts){
+let _wmChain=Promise.resolve(), _wmLatest=null, _wmSeq=0;
+function wM(name,opts){
+  if(!M[name]) return Promise.resolve();
+  if(!S.running){ return _wM(name,opts); }              // 未开卷：同步设模态（首页点卡片）
+  _wmLatest=name; const my=++_wmSeq;
+  _wmChain=_wmChain.then(()=>{ if(my!==_wmSeq) return; return _wM(name,opts); }).catch(e=>{ console.warn('[wM]',e&&e.message); });
+  return _wmChain;
+}
+async function _wM(name,opts){
   if(!M[name]) return;
   if(!_privacyShown && (M[name].needCam||M[name].needMic)){ _privacyShown=true; setTimeout(()=>flashHint(t('privacyNote'),4200),400); }
   const silent=!!(opts&&opts.silent);
@@ -5501,11 +5559,11 @@ async function wM(name,opts){
       str=null; vid=null; pip.style.display='none';
     }
     S.mode=name;S.smooth.x=S.smooth.y=-1;
-    if(M[name].needCam && !str){
-      try{ await initCam(name==='flashlight'); }
+    if(M[name].needCam && (!str || S._camRoom!==(name==='flashlight'))){
+      try{ await initCam(name==='flashlight'); S._camRoom=(name==='flashlight'); }
       catch(e){ console.warn('Camera reinit failed:',e.message); }
     }
-    if(S.mode!==name) return;               // user switched again mid-await
+    if(S.mode!==name || _wmLatest!==name) return;   // user switched again mid-await
     M[name].init();
     if(!silent) flashHint(firstHintText());
     S.firstMoveDistance = 0;

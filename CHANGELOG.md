@@ -2,6 +2,33 @@
 
 遵循 [SemVer](https://semver.org/lang/zh-CN/)。每个版本都对应一组 CI 绿了的提交。
 
+## [0.2.7] — 2026-10-29
+
+**六份评审留下的工程项，全部做完**
+
+### 契约（通用框架的根因）
+- `Spot` 新增 `t`（时间戳）、`vel`（像素/秒，跨帧平滑）、`members`；`extent` 类型化孔径 `disc | band | rect | brush`
+- 内容源可用 `extent(spot,W,H)` 决定孔径：文本源变成「一列」，照到哪一列读哪一列
+- 书写形式的笔宽真的进渲染（之前算了没用）
+
+### 形式的可见签名
+- 延迟虚线环、共处人数格、仪式墨点 + 倒计时、静默进度弧、日课朱印、驱赶外推刺；每种开 / 关像素差断言
+
+### 离线与展厅
+- MediaPipe 本地优先：`python3 tools/vendor_mediapipe.py` 下载约 34 MB 到 `web/vendor/`，启动时 HEAD 一次，有就不碰 CDN；实测 CDN 全被拦 0.4 s 起页
+- `examples/kiosk/`：Linux/macOS 启动守护脚本、systemd 单元、Windows bat、`watchdog.py`
+- 投影墙模式每 5 s 向 `room=heartbeat` 报 fps；`GET /health` 返回 `heartbeat.alive`
+- 点云漂移相位按墙钟（`S.clock0`），两台机器各自开页也同相
+- NDI / Spout：经 OBS 浏览器源的接法写进 `docs/CREATIVE-TOOLS.md`
+
+### 健壮性
+- `wM` 串行化 + 合并：连点 42 张卡片不再各自开摄像头 / 初始化模型（之前渲染进程 SEGV）；摄像头按朝向复用
+- 14 个模态补上 `fallback` 声明；`spF(null)` 不再抛
+
+### 测试诚实度
+- 「可进入」类断言改为行为断言：spot 输出必须是画布内有限数、`ex()` 不抛、声明了降级；NFC 验 `scan()` 真被调用且读「雪」换画；环境光验降级到指针；点云「光位改变视角」改为同一时刻定住漂移的确定性对比；首屏时间断言不再恒真；删一条重复计数
+- 断言 273 → **289**；创作软件自检 11 → 13
+
 ## [0.2.6] — 2026-10-29
 
 **内容源接口：隐藏层不再只是那 5 张图**

@@ -34,6 +34,7 @@ OSC → 光圈 的约定（地址 → 字段）
 """
 
 import json
+import time
 import os
 import queue
 import socket
@@ -54,6 +55,7 @@ HEARTBEAT = 15.0              # seconds; keeps proxies from closing idle SSE str
 _lock = threading.Lock()
 _rooms: dict[str, set[queue.Queue]] = {}
 _last: dict[str, dict] = {}          # room → 最后一条 JSON（给 /state 用）
+_last_ts: dict[str, float] = {}      # room → 收到时间（/health 的心跳年龄）
 
 
 def subscribe(room: str) -> queue.Queue:
@@ -211,9 +213,17 @@ class Handler(SimpleHTTPRequestHandler):
         if u.path == "/health":
             with _lock:
                 rooms = {k: len(v) for k, v in _rooms.items()}
+            with _lock:
+                hb = _last.get("heartbeat"); hb_ts = _last_ts.get("heartbeat")
+            heartbeat = None
+            if hb is not None and hb_ts is not None:
+                heartbeat = {"age_s": round(time.time() - hb_ts, 1), "fps": hb.get("fps"),
+                             "mode": hb.get("mode"), "scene": hb.get("scene"),
+                             "alive": (time.time() - hb_ts) < 20 and (hb.get("fps") or 0) >= 5}
             return self.json_out({"ok": True, "rooms": rooms, "clients": sum(rooms.values()),
                                   "osc_port": OSC_PORT, "dmx": bool(DMX_HOST), "dmx_host": DMX_HOST,
-                                  "universe": DMX_UNIVERSE, "max_body": MAX_BODY})
+                                  "universe": DMX_UNIVERSE, "max_body": MAX_BODY,
+                                  "heartbeat": heartbeat, "server_time": time.time()})
         if u.path == "/rooms":
             with _lock:                            # 不泄露手机配对 token：只给前 2 位
                 rooms = {(k[:2] + "…" if len(k) > 4 else k): len(v) for k, v in _rooms.items()}
@@ -276,6 +286,7 @@ class Handler(SimpleHTTPRequestHandler):
                 if room not in _last and len(_last) >= MAX_ROOMS:
                     _last.pop(next(iter(_last)))   # 最老的让位
                 _last[room] = json.loads(body)
+                _last_ts[room] = time.time()
         except Exception:
             pass
         count = broadcast(room, b"data: " + body.replace(b"\n", b" ") + b"\n\n")

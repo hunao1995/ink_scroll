@@ -75,6 +75,13 @@ def main():
         say(get("/rooms").get("rooms") == {} or isinstance(get("/rooms").get("rooms"), dict),
             "/rooms 返回房间表")
         say(get("/state?room=ext-state").get("state") is None, "/state 在无数据时返回 null（不报错）")
+        say(get("/health").get("heartbeat") is None, "/health 无心跳时 heartbeat=null")
+        urllib.request.urlopen(urllib.request.Request(f"{BASE}/send?room=heartbeat",
+            data=json.dumps({"type": "hb", "fps": 42, "mode": "auto", "scene": 6}).encode(),
+            headers={"Content-Type": "application/json"}), timeout=3).read()
+        hb = get("/health").get("heartbeat") or {}
+        say(hb.get("alive") is True and hb.get("fps") == 42 and hb.get("age_s", 99) < 5,
+            "/health 收到 kiosk 心跳：alive / fps / age", json.dumps(hb))
 
         print("\nArt-Net DMX（灯光控台）")
         dmx = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)

@@ -120,7 +120,7 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
     const l = document.getElementById('loading');
     return l && l.classList.contains('gone');
   }, { timeout: 15000 });
-  ok('首屏在 15s 内完成载入', true, `${Date.now() - t0}ms`);
+  ok('首屏在 15s 内完成载入', Date.now() - t0 < 15000, `${Date.now() - t0}ms`);
   ok('无 JS 报错 / no page errors', errs.length === 0, errs.join(' | '));
 
   const imgs = await page.evaluate(() => sceneImages.map(i => i ? [i.naturalWidth, i.naturalHeight] : null));
@@ -147,7 +147,6 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
     `cards=${modeCards.length}`);
   const groups = await page.evaluate(() => [...document.querySelectorAll('.mode-group .cat-label')].map(e => e.textContent.trim()));
   ok('模式按「需要什么」分组', groups.length === 4, groups.join(' | '));
-  ok('21+ 个模态卡片全部渲染', modeCards.length >= 24, String(modeCards.length));
 
   /* ═══════════════ 2. i18n switching ═══════════════ */
   group('2 · 语言 / language switching');
@@ -679,6 +678,76 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   await offline.close();
   await page.goto(`${BASE}/index.html`); await sleep(1200);
 
+  /* ═══════════════ 2m. 连点 42 张模态卡片（评审：渲染进程曾 SEGV） ═══════════════ */
+  group('2m · 连点 42 张卡片：不崩、不报错、最后一张生效、摄像头不残留');
+  const rapid = await page.evaluate(async () => {
+    if (!S.running) { document.getElementById('btn-start').click(); await new Promise(r => setTimeout(r, 1200)); }
+    const ids = Object.keys(M);
+    for (const k of ids) { wM(k); await new Promise(r => setTimeout(r, 25)); }   // 42 次，每 25ms 一次
+    wM('mouse');
+    await new Promise(r => setTimeout(r, 4000));
+    const live = (typeof str !== 'undefined' && str) ? str.getTracks().filter(t => t.readyState === 'live').length : 0;
+    return { n: ids.length, mode: S.mode, running: S.running, live };
+  }).catch(e => ({ crashed: String(e.message).slice(0, 80) }));
+  ok('连点 42 张卡片后页面还活着、落在最后一张、无残留摄像头', !rapid.crashed && rapid.n === 42 && rapid.mode === 'mouse' && rapid.running && rapid.live === 0, JSON.stringify(rapid));
+  ok('连点 42 张卡片：无 page error', errs.length === 0, errs.slice(0, 3).join(' | '));
+  await page.goto(`${BASE}/index.html`); await sleep(1200);
+
+  /* ═══════════════ 2n. 形式的可见签名 / 共享时钟 / kiosk 心跳 ═══════════════ */
+  group('2n · 形式要在眼睛里存在：开 / 关像素必须不同；点云相位按墙钟；kiosk 心跳进 /health');
+  const sigs = await page.evaluate(async () => {
+    if (!S.running) { document.getElementById('btn-start').click(); await new Promise(r => setTimeout(r, 1200)); }
+    wM('mouse'); S.paused = true;
+    const D2 = document.getElementById('display');
+    D2.dispatchEvent(new PointerEvent('pointermove', { pointerId: 1, pointerType: 'mouse', clientX: 400, clientY: 300, bubbles: true }));
+    await new Promise(r => setTimeout(r, 300));
+    const grab = () => { const c = document.createElement('canvas'); c.width = 320; c.height = 200; const g = c.getContext('2d');
+      g.drawImage(D, 0, 0, 320, 200); return g.getImageData(0, 0, 320, 200).data; };
+    const diff = (a, b) => { let n = 0; for (let i = 0; i < a.length; i += 4) if (Math.abs(a[i] - b[i]) > 10 || Math.abs(a[i + 1] - b[i + 1]) > 10) n++; return n; };
+    const reset = () => { S.delayMs = 0; S.delayBuf = []; S.together = false; S.togetherLow = 0; S.ritual = false; S.ritualTaps = []; S.ritualUntil = 0;
+      S.silence = { since: 0, acted: false, needMs: 20000, on: false }; S.daily = { on: false, seed: 0 }; S.repel = false; };
+    const out = {};
+    const cases = {
+      delay: () => { S.delayMs = 8000; S.delayBuf = []; },
+      together: () => { S.together = true; S.togetherNeed = 2; S.togetherLow = 0.6; },
+      ritual: () => { S.ritual = true; S.ritualTaps = [{ x: 200, y: 200, t: performance.now() }, { x: 500, y: 220, t: performance.now() }]; },
+      silence: () => { S.silence = { since: performance.now() - 9000, acted: false, needMs: 20000, on: true }; S.audio = { on: true, level: 0 }; },
+      daily: () => { S.daily = { on: true, seed: dailySeed().key }; },
+      repel: () => { S.repel = true; },
+    };
+    for (const [k, on] of Object.entries(cases)) {
+      reset(); await new Promise(r => setTimeout(r, 250)); const a = grab();
+      on(); await new Promise(r => setTimeout(r, 250)); const b = grab();
+      out[k] = diff(a, b);
+    }
+    reset(); S.paused = false; S.audio = { on: false, level: 0 };
+    return out;
+  });
+  for (const k of ['delay', 'together', 'ritual', 'silence', 'daily', 'repel']) {
+    ok(`形式「${k}」开与不开，画面看得出区别（像素差 > 0.1%）`, sigs[k] > 320 * 200 * 0.001, `${sigs[k]} px`);
+  }
+
+  const clock = await page.evaluate(() => {
+    const mk = () => { const c = document.createElement('canvas'); c.width = 200; c.height = 120; return { c, g: c.getContext('2d') }; };
+    S.view = { yaw: 0, pitch: 0, zoom: 1, frozen: false }; S.mouseX = DW / 2; S.mouseY = DH / 2;
+    const save = S.clock0;
+    S.clock0 = 1000; const a = mk(); drawCloud(a.g, 200, 120, 1.0, false);
+    S.clock0 = 1000 + 6.5; const b = mk(); drawCloud(b.g, 200, 120, 1.0, false);   // 墙钟差 6.5s → 相位不同
+    S.clock0 = save;
+    const da = a.g.getImageData(0, 0, 200, 120).data, db = b.g.getImageData(0, 0, 200, 120).data;
+    let n = 0; for (let i = 0; i < da.length; i += 4) if (Math.abs(da[i] - db[i]) > 6) n++;
+    return { n, hasClock: typeof S.clock0 === 'number' && Math.abs((Date.now() / 1000 - performance.now() / 1000) - save) < 2 };
+  });
+  ok('点云漂移相位由墙钟决定（两台机器各自开页也同相）', clock.hasClock && clock.n > 200 * 120 * 0.02, JSON.stringify(clock));
+
+  const hb = await page.evaluate(async () => {
+    S.wall = true; S._hbT = 0; await new Promise(r => setTimeout(r, 600)); S.wall = false;
+    const h = await (await fetch('/health')).json();
+    return { hb: h.heartbeat, alive: h.heartbeat && h.heartbeat.alive };
+  });
+  ok('kiosk 心跳：投影墙模式每 5s 上报 fps，/health 能判断画面是否在动', !!hb.hb && typeof hb.hb.fps === 'number' && hb.hb.age_s < 5, JSON.stringify(hb));
+  await page.goto(`${BASE}/index.html`); await sleep(1200);
+
   /* ═══════════════ 3. start / default mode ═══════════════ */
   group('3 · 进入画卷 / start');
   await page.goto(`${BASE}/index.html`);   // 前面几组会改模态/开卷，这里要一张干净的页
@@ -714,7 +783,13 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
     await page.evaluate((mm) => wM(mm), m);
     await sleep(m === 'face' ? 3500 : 1300);
     const st = await modeState(m);
-    ok(`模式 ${m} 可进入且不报错`, st.mode === m && errs.length === 0, errs.join('|') + ' ' + JSON.stringify(st));
+    const beh = await page.evaluate((mm) => {               // 行为：spot/spots 输出要么 null，要么是画布内的有限数；ex() 不抛
+      try { const f = M[mm].spots; const out = typeof f === 'function' ? f(null) : [M[mm].spot(null)];
+        const bad = (out || []).filter(sp => sp && !(Number.isFinite(sp.x) && Number.isFinite(sp.y) && Number.isFinite(sp.radius) && sp.x >= -DW && sp.x <= 2 * DW && sp.radius > 0));
+        return { ok: bad.length === 0, ex: typeof M[mm].ex() === 'string', fb: typeof M[mm].fallback === 'string' };
+      } catch (e) { return { ok: false, err: e.message }; } }, m);
+    ok(`模式 ${m}：进入不报错，spot 输出合法（有限数 / 画布内）且声明了降级`,
+      st.mode === m && errs.length === 0 && beh.ok && beh.ex && beh.fb, errs.join('|') + ' ' + JSON.stringify({ st, beh }));
   }
 
   // auto: the scroll drifts on its own
@@ -944,25 +1019,36 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   ok('蓝牙：心率读数 → 光圈', bleOk.hr === 120 && bleOk.r > 0.9, JSON.stringify(bleOk));
 
   // WebSerial IR tracker: no serial API in this browser → must stay in-mode and say so
-  const ir = await page.evaluate(() => { wM('ir'); return { mode: S.mode, has: 'serial' in navigator }; });
-  ok('IR 追踪器：无 WebSerial 时不报错、不踢出模式', ir.has ? ir.mode === 'ir' : ir.mode === 'ir',
+  const ir = await page.evaluate(async () => { wM('ir'); await new Promise(r => setTimeout(r, 400));
+    const sp = M.ir.spot(null); return { mode: S.mode, has: 'serial' in navigator, ex: M.ir.ex(), spotOk: sp === null || Number.isFinite(sp.x) }; });
+  ok('IR 追踪器：无 WebSerial 时留在模式内、状态行说明原因、spot 不抛', ir.mode === 'ir' && typeof ir.ex === 'string' && ir.ex.length > 0 && ir.spotOk,
     JSON.stringify(ir));
 
   // NFC: fake NDEF reader
   const nfcOk = await page.evaluate(async () => {
-    window.NDEFReader = function () { this.scan = async () => {}; };
+    let scanned = 0, reader = null;
+    window.NDEFReader = function () { reader = this; this.scan = async () => { scanned++; }; };
     await nfcStart();
-    return { has: 'NDEFReader' in window, mode: S.mode };
+    // 模拟读到一张写着「雪」的贴纸：应用应当接 onreading 并换画
+    const before = S.scene;
+    if (reader && typeof reader.onreading === 'function') {
+      reader.onreading({ message: { records: [{ recordType: 'text', encoding: 'utf-8', data: new TextEncoder().encode('雪') }] } });
+    }
+    await new Promise(r => setTimeout(r, 200));
+    return { scanned, wired: !!(reader && typeof reader.onreading === 'function'), before, after: S.scene };
   });
-  ok('NFC：没有扫描器时不会崩', nfcOk.has === true, JSON.stringify(nfcOk));
+  ok('NFC：应用真的调用了 scan() 并接上 onreading；读到「雪」会换画', nfcOk.scanned === 1 && nfcOk.wired && nfcOk.after === 2, JSON.stringify(nfcOk));
 
   // ambient light: no sensor in headless → honest hint, pointer still works
-  const lx = await page.evaluate(() => { wM('light'); return { ok: S.light.ok, sensor: 'AmbientLightSensor' in window }; });
-  ok('环境光：无传感器时给提示并继续可用', lx.sensor ? true : lx.ok === false, JSON.stringify(lx));
+  const lx = await page.evaluate(async () => { wM('light'); await new Promise(r => setTimeout(r, 300));
+    S.mouseX = DW * 0.3; S.mouseY = DH * 0.4; const sp = M.light.spot(null);
+    return { ok: S.light.ok, sensor: 'AmbientLightSensor' in window, spot: sp && Number.isFinite(sp.radius) && Math.abs(sp.x - DW * 0.3) < 2 }; });
+  ok('环境光：无传感器时标记不可用，但光仍跟指针（降级真的在工作）', lx.ok === false && lx.spot === true, JSON.stringify(lx));
 
+  await page.evaluate(() => changeScene(0)); await sleep(1200);   // 上面 NFC 刚换过画：等换画防抖过去
   // clap: drive the onset handler directly (mic has no real peaks here)
   const clap0 = await page.evaluate(() => S.scene);
-  await page.evaluate(() => { wM('clap'); S.clap = { last: 0, prev: 0 }; clapOnset(); });
+  await page.evaluate(async () => { await wM('clap'); await new Promise(r => setTimeout(r, 150)); S.clap = { last: 0, prev: 0 }; clapOnset(); });   // wM 现在排队：等 init 跑完再拍
   await sleep(60);
   await page.evaluate(() => { S.clap.last = 0; clapOnset(); });
   await sleep(200);
@@ -1005,9 +1091,18 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   });
   ok('点云立轴：生成了点云（>1000 点）', cloud.count > 1000, 'pts=' + cloud.count);
   ok('点云立轴：画面不是空白', cloud.a.nz > 50 && cloud.a.mean > 2, JSON.stringify(cloud.a));
-  ok('点云立轴：移动光的位置会改变视角（真 3D 交互）',
-    cloud.a.nz !== cloud.b.nz || cloud.a.mean !== cloud.b.mean,
-    `${cloud.a.mean}/${cloud.a.nz} vs ${cloud.b.mean}/${cloud.b.nz}`);
+  const cloudDet = await page.evaluate(() => {               // 确定性：同一 t，只改光位，像素必须不同（排除自漂移）
+    const mk = () => { const c = document.createElement('canvas'); c.width = 240; c.height = 150; return { c, g: c.getContext('2d') }; };
+    S.view = { yaw: 0, pitch: 0, zoom: 1, frozen: true };
+    S.mouseX = DW * 0.12; S.mouseY = DH * 0.5; const a = mk(); drawCloud(a.g, 240, 150, 1.0, false);
+    S.mouseX = DW * 0.88; const b = mk(); drawCloud(b.g, 240, 150, 1.0, false);
+    S.view.frozen = false;
+    const da = a.g.getImageData(0, 0, 240, 150).data, db = b.g.getImageData(0, 0, 240, 150).data;
+    let diff = 0; for (let i = 0; i < da.length; i += 4) if (Math.abs(da[i] - db[i]) > 6) diff++;
+    return { diff, total: 240 * 150 };
+  });
+  ok('点云立轴：移动光的位置会改变视角（同一时刻、定住漂移、只改光位）', cloudDet.diff > cloudDet.total * 0.05,
+    `${cloudDet.diff}/${cloudDet.total}`);
   const staticDeps = [...fs.readFileSync(path.join(ROOT, 'web/index.html'), 'utf8')
     .matchAll(/<script src="(https?:[^"]+)"/g)].map(m => m[1]);
   // 深度进契约：直接渲染两次同尺寸点云，z 不同 → 像素必须不同（确定性，不依赖窗口均值）
@@ -1364,8 +1459,10 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
     kk.locked === true && kk.called === 4 && kk.fallback === false, JSON.stringify(kk));
 
   for (const m of ['presence', 'screens', 'kiosk', 'load']) {
-    const st = await page.evaluate((mm) => { wM(mm); return { mode: S.mode }; }, m);
-    ok(`环境模态 ${m} 可进入`, st.mode === m, st.mode);
+    const st = await page.evaluate(async (mm) => { wM(mm); await new Promise(r => setTimeout(r, 250));
+      S.mouseX = DW * 0.5; S.mouseY = DH * 0.5; const sp = M[mm].spot(null);
+      return { mode: S.mode, spot: !!sp && Number.isFinite(sp.x) && Number.isFinite(sp.radius) && sp.radius > 0, ex: typeof M[mm].ex() === 'string' }; }, m);
+    ok(`环境模态 ${m}：进入后 spot 给出有限光圈、状态行可读`, st.mode === m && st.spot && st.ex, JSON.stringify(st));
   }
 
   /* ═══════════════ 4g. 闭环回传（页面 → 脚本） ═══════════════ */
@@ -1419,8 +1516,10 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   /* ═══════════════ 4j. 审核补漏：四个模态缺"按名字"的断言 ═══════════════ */
   group('4j · 审核补漏：hours / clip / inkpick / whistle 各自可进入');
   for (const m of ['hours', 'clip', 'inkpick', 'whistle']) {
-    const st2 = await page.evaluate((mm) => { wM(mm); return { mode: S.mode, ex: M[mm].ex() }; }, m);
-    ok(`模态 ${m} 可进入并给出状态行`, st2.mode === m && typeof st2.ex === 'string', String(st2.ex).slice(0, 40));
+    const st2 = await page.evaluate(async (mm) => { wM(mm); await new Promise(r => setTimeout(r, 250));
+      S.mouseX = DW * 0.5; S.mouseY = DH * 0.5; if (mm === 'whistle') S.audio = { on: true, pitch: 440, level: 0.5 };
+      const sp = M[mm].spot(null); return { mode: S.mode, ex: M[mm].ex(), spot: !!sp && Number.isFinite(sp.x) && sp.radius > 0 }; }, m);
+    ok(`模态 ${m}：进入后 spot 有限、状态行非空`, st2.mode === m && typeof st2.ex === 'string' && st2.ex.length > 0 && st2.spot, String(st2.ex).slice(0, 40));
   }
   await page.evaluate(() => { wM('mouse'); });
 

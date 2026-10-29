@@ -1,0 +1,18 @@
+# systemd 单元：sudo cp examples/kiosk/ink-kiosk.service /etc/systemd/system/ && sudo systemctl enable --now ink-kiosk
+[Unit]
+Description=Ink Scroll kiosk (relay + fullscreen Chromium)
+After=graphical.target network-online.target
+
+[Service]
+User=%i
+Environment=DISPLAY=:0
+Environment=INK_PORT=8888
+# Environment=INK_TOKEN=change-me
+# Environment=DMX_HOST=192.168.1.50
+WorkingDirectory=/opt/ink_scroll
+ExecStart=/bin/bash /opt/ink_scroll/examples/kiosk/ink-kiosk.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=graphical.target

@@ -52,6 +52,19 @@ chromium --kiosk "http://localhost:8888/?preset=kiosk"
 - 观众离开 60s：`presence` 模态会让光圈自己收小（不会黑屏）
 - 灯光跟随：`DMX_HOST=<控台IP> python3 server.py 8888`（CH1 亮度 / CH2 x / CH3 y / CH4 半径）
 
+## 展厅守护（崩了自己起来）
+
+```bash
+bash examples/kiosk/ink-kiosk.sh                 # 起中继 + 全屏 Chromium；浏览器退出/崩溃 3 秒后重开
+INK_TOKEN=secret DMX_HOST=192.168.1.50 bash examples/kiosk/ink-kiosk.sh
+python3 examples/kiosk/watchdog.py --cmd "pkill -f chromium"   # /health 心跳 20s 没来或 fps<5 → 执行命令
+```
+
+- `examples/kiosk/ink-kiosk.service`：systemd 单元（开机自启、Restart=always）
+- `examples/kiosk/ink-kiosk.bat`：Windows 版，放进「启动」文件夹
+- 投影墙模式下页面每 5 秒把 `fps / mode / scene` 发到 `room=heartbeat`，`GET /health` 返回 `heartbeat.alive`
+- 公共 Wi-Fi 上务必设 `INK_TOKEN`：没有 key 的 POST 一律 403
+
 ## 加一个新预设
 
 改 `web/index.html` 里的 `PRESETS`：

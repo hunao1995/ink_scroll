@@ -67,6 +67,17 @@ MQTT_HOST=192.168.1.10 MQTT_TOPIC=studio/spot python3 tools/mqtt_bridge.py
 > **诚实标注**：这个脚本没有在真实 broker 上验证过（这台机器装不了 mosquitto）。
 > 已验证的是它的 payload 解析（6 组用例，含空包与非法输入）以及它依赖的 HTTP 路径。
 
+## NDI / Spout 输出（给 TouchDesigner / Resolume / MadMapper 做 warp、融合、色彩）
+
+浏览器本身出不了 NDI / Spout。现实解法是 **OBS 当转换器**，零代码，多一跳约 1–2 帧延迟：
+
+1. OBS → 来源 → **浏览器源**：URL `http://127.0.0.1:8888/?preset=kiosk&grid=0`，宽高填投影分辨率，勾「关闭时停止」不勾
+2. 装 [obs-ndi](https://github.com/DistroAV/DistroAV)（NDI）或 [Spout2 插件](https://github.com/Off-World-Live/obs-spout2-plugin)（Windows Spout）
+3. 工具 → NDI 输出设置 → 勾「主输出」；TD 用 **NDI In TOP**，Resolume / MadMapper 直接选 NDI 源
+4. 交互仍然走 OSC `udp/9000` 进页面，TD 只拿画面做几何校正与融合；想要回传状态就订阅 `/events?room=ext-state`
+
+多机同相：点云漂移相位按墙钟算（`S.clock0`），两台机器各自开页也同步，只要系统时间对过 NTP。
+
 ## 灯光 / 舞台（Art-Net）
 
 页面状态 → **Art-Net DMX**，真灯跟着光圈走：
