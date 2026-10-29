@@ -8,11 +8,14 @@
 <meta property="og:title" content="墨卷 · Ink Scroll">
 <meta property="og:description" content="光照之处，墨色生辉 — 浏览器端交互水墨画装置">
 <meta property="og:type" content="website">
-<meta property="og:image" content="scenes/shanshui.jpg">
+<meta property="og:image" content="https://hunao1995.github.io/ink_scroll/scenes/shanshui.jpg">
+<meta property="og:url" content="https://hunao1995.github.io/ink_scroll/">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://hunao1995.github.io/ink_scroll/scenes/shanshui.jpg">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23f5f4ed'/%3E%3Crect x='10' y='10' width='12' height='12' fill='%23c96442'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500;600;700&family=Noto+Serif+TC:wght@400;500;600;700&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500;600;700&family=Noto+Serif+TC:wght@400;500;600;700&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
 <style>
 /* ═══════════════════════════════════════════════════════════
    墨卷 · INK SCROLL
@@ -135,7 +138,7 @@ html[lang^="zh"] #loading .word{letter-spacing:.4em;text-transform:none;font-siz
   position:fixed;inset:0;z-index:100;
   display:flex;flex-direction:column;align-items:center;justify-content:flex-start;
   color:var(--ink);
-  padding:clamp(16px,5vh,64px) 24px 116px;overflow-y:auto;
+  padding:clamp(16px,5vh,64px) 24px 150px;overflow-y:auto;
   scrollbar-width:thin;
   opacity:0;
   transition:opacity .55s var(--easing-out),transform .55s var(--easing-out);
@@ -248,12 +251,7 @@ html[lang^="zh"] .tagline{font-style:normal;letter-spacing:.18em;text-indent:.18
     background-color .35s var(--easing-out);
   opacity:0;transform:translateY(10px);
 }
-.mode-card:nth-child(1){animation:fade-up .7s .55s var(--easing-out) forwards}
-.mode-card:nth-child(2){animation:fade-up .7s .65s var(--easing-out) forwards}
-.mode-card:nth-child(3){animation:fade-up .7s .75s var(--easing-out) forwards}
-.mode-card:nth-child(4){animation:fade-up .7s .85s var(--easing-out) forwards}
-.mode-card:nth-child(5){animation:fade-up .7s .95s var(--easing-out) forwards}
-.mode-card:nth-child(6){animation:fade-up .7s 1.05s var(--easing-out) forwards}
+.mode-card{animation:fade-up .6s .5s var(--easing-out) forwards}   /* 每张都要淡入；延迟由 JS 按序号给 */
 .mode-card:hover{
   border-color:var(--stone-soft);
   transform:translateY(-2px);
@@ -670,7 +668,7 @@ html[lang^="zh"] #calib .calib-title{letter-spacing:.14em}
    WALL MODE (?wall=1) — 投影墙：只留画面，所有 UI 消失，
    再叠一层校准网格给 MadMapper / TD 对齐用（我们不做校准，只给参照）
    ══════════════════════════════════════════════════════════ */
-body.wall #ui,body.wall #bar,body.wall .scene-nav,body.wall #first-hint,
+body.wall #ui,body.wall #bar,body.wall .scene-nav,body.wall #first-hint,body.wall #onboard,
 body.wall .credit,body.wall #roster,body.wall #gh,body.wall #glegend,
 body.wall .lang-switch{display:none !important}
 body.wall{cursor:none}
@@ -698,8 +696,10 @@ body.wall{cursor:none}
 }
 .tagline b{color:var(--ink);font-weight:600}
 /* CTA 行：主按钮吸底，次按钮与它同行 */
-.cta-row{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:7;
-  display:flex;align-items:center;gap:10px}
+.cta-row{position:fixed;left:0;right:0;bottom:0;z-index:7;
+  display:flex;align-items:center;justify-content:center;gap:10px;
+  padding:22px 24px 18px;
+  background:linear-gradient(to top,var(--parchment) 62%,rgba(245,244,237,0));}
 #btn-start{position:static;transform:none;left:auto;bottom:auto}
 #btn-gallery{
   font-family:var(--serif);font-size:.74rem;letter-spacing:.14em;
@@ -904,7 +904,6 @@ html[lang^="zh"] .overlay .sheet .sect-h{letter-spacing:.3em;text-transform:none
     <div class="brand-mark" data-i18n="brand">墨卷</div>
     <div class="seal" aria-hidden="true">印</div>
   </div>
-  <div class="tagline" data-i18n="tagline">光照之处，墨色生辉</div>
 
   <p class="tagline" id="tagline" data-i18n="tagline">一幅被墨盖住的画 · 光落在哪里，哪里才显色</p>
   <div class="mode-groups" id="mg"></div>
@@ -1046,8 +1045,8 @@ html[lang^="zh"] .overlay .sheet .sect-h{letter-spacing:.3em;text-transform:none
 </div>
 <div id="roster"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3/camera_utils.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js"></script>
+<script async src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3/camera_utils.js"></script>
+<script async src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js"></script>
 <script>
 /* ═══════════════════════════════════════════════════════════
    墨卷 · Ink Scroll — Core Engine
@@ -1405,6 +1404,8 @@ const I18N = {
     formSilence:'静默',
     formDaily:'日课',
     formOffering:'供奉',
+    fxModelOffline:'手势模型没能加载（网络受限）· 已回到指针',
+    privacyNote:'摄像头与麦克风只在本机换算成光圈坐标 · 不录制、不上传',
     ob1:'移动鼠标或手指',
     ob2:'光落在哪里，哪里才显色',
     ob3:'按 F 试吹墨 · 按 ? 看全部玩法',
@@ -1712,6 +1713,8 @@ const I18N = {
     formSilence:'靜默',
     formDaily:'日課',
     formOffering:'供奉',
+    fxModelOffline:'手勢模型沒能載入（網路受限）· 已回到指標',
+    privacyNote:'攝影機與麥克風只在本機換算成光圈座標 · 不錄製、不上傳',
     ob1:'移動滑鼠或手指',
     ob2:'光落在哪裡，哪裡才顯色',
     ob3:'按 F 試吹墨 · 按 ? 看全部玩法',
@@ -2018,6 +2021,8 @@ const I18N = {
     formSilence:'Silence',
     formDaily:'Daily',
     formOffering:'Offering',
+    fxModelOffline:'Hand model failed to load (restricted network) · back to pointer',
+    privacyNote:'Camera and mic are turned into a light position on this device only · nothing recorded or uploaded',
     ob1:'Move the cursor or your finger',
     ob2:'Colour appears only where the light falls',
     ob3:'Press F to blow ink · ? for all controls',
@@ -2208,11 +2213,13 @@ function showOnboard(){
     setTimeout(()=>{ el.classList.remove('show','hide'); }, 520);
     try{ localStorage.setItem('ink-onboard','1'); }catch(e){}
     clearTimeout(_obT);
-    D.removeEventListener('pointermove', hide);
     D.removeEventListener('pointerdown', hide);
   };
   _obT=setTimeout(hide, 4500);
-  D.addEventListener('pointermove', hide, {once:true});
+  let ox=null, oy=null;                       // 鼠标进页面本来就在动：移动超过 60px 才算"开始玩"
+  const onMove=(e)=>{ if(ox===null){ ox=e.clientX; oy=e.clientY; return; }
+    if(Math.hypot(e.clientX-ox, e.clientY-oy)>60){ D.removeEventListener('pointermove', onMove); hide(); } };
+  D.addEventListener('pointermove', onMove);
   D.addEventListener('pointerdown', hide, {once:true});
 }
 
@@ -2607,7 +2614,13 @@ function genHidden(){
   }else if(S.scene===5){
     draw3D(tmpCtx,mw,mh,0);
   }else if(S.scene===6){
-    drawCloud(tmpCtx,mw,mh,0,true);
+    if(S.stereo==='sbs'){                                 // 墨层必须和彩色层一样是左右分屏
+      const half=mw/2;
+      tmpCtx.save(); tmpCtx.beginPath(); tmpCtx.rect(0,0,half,mh); tmpCtx.clip();
+      drawCloud(tmpCtx,mw,mh,0,true,{eyeYaw:-0.035}); tmpCtx.restore();
+      tmpCtx.save(); tmpCtx.beginPath(); tmpCtx.rect(half,0,half,mh); tmpCtx.clip(); tmpCtx.translate(-half,0);
+      drawCloud(tmpCtx,mw,mh,0,true,{eyeYaw:0.035}); tmpCtx.restore();
+    }else drawCloud(tmpCtx,mw,mh,0,true);
   }else{
     const img=sceneImages[S.scene];
     if(img){const r=fitScene(img,mw,mh);tmpCtx.drawImage(img,0,0,img.naturalWidth,img.naturalHeight,r.dx,r.dy,r.dw,r.dh);}
@@ -2713,9 +2726,15 @@ function mpLocate(file){ return (String(file).indexOf('face_mesh')===0?MP_DIRS.f
 /* ───────────────────────────────────────────────────────────
    Hand gesture (MediaPipe Hands)
    ─────────────────────────────────────────────────────────── */
+function waitGlobal(name,ms){ return new Promise(res=>{ const t0=performance.now();
+  (function tick(){ if(window[name]) return res(true); if(performance.now()-t0>ms) return res(false); setTimeout(tick,120); })(); }); }
 function iH(){
   if(hr)return;
   if(hands){ hr=true; return; }              // reuse the warm instance (see cln below)
+  if(!window.Hands){                         // 模型脚本是 async 加载的：没到就等，到不了就提示
+    waitGlobal('Hands',12000).then(ok=>{ if(ok && S.mode==='hand' && !hr) iH(); else if(!ok) flashHint(t('fxModelOffline'),2600); });
+    return;
+  }
   hands=new Hands({locateFile:mpLocate});
   hands.setOptions({maxNumHands:1,modelComplexity:0,minDetectionConfidence:.5,minTrackingConfidence:.5});
   hands.onResults(r=>{
@@ -3352,13 +3371,14 @@ function bridgeStop(){ const B=S.bridge; try{ B.es&&B.es.close(); }catch(e){} B.
 function extIngest(m){
   if(!m||typeof m!=='object') return;
   const B=S.bridge;
-  if(typeof m.x==='number') B.x=clampN(m.x,0,1);
-  if(typeof m.y==='number') B.y=clampN(m.y,0,1);
-  if(typeof m.z==='number') B.z=clampN(m.z,0,1);        // 0 = 贴近画纸, 1 = 深处
-  if(m.presence!=null) B.presence=clampN(+m.presence,0,1);
-  if(m.state&&typeof m.state==='object') B.state=m.state;
+  const num=(v)=>{ const n=+v; return Number.isFinite(n)?n:null; };   // 'abc' / NaN / Infinity 一律忽略
+  if(num(m.x)!==null) B.x=clampN(num(m.x),0,1);
+  if(num(m.y)!==null) B.y=clampN(num(m.y),0,1);
+  if(num(m.z)!==null) B.z=clampN(num(m.z),0,1);        // 0 = 贴近画纸, 1 = 深处
+  if(m.presence!=null && num(m.presence)!==null) B.presence=clampN(num(m.presence),0,1);
+  if(m.state&&typeof m.state==='object'){ try{ JSON.stringify(m.state); B.state=m.state; }catch(e){} }  // 循环对象丢弃
   if(m.id!=null) B.id=String(m.id).slice(0,64);
-  if(typeof m.r==='number') B.r=clampN(m.r,0.02,3);
+  if(num(m.r)!==null) B.r=clampN(num(m.r),0.02,3);
   if(m.scene!==undefined) changeScene(((m.scene|0)%SCENE_COUNT+SCENE_COUNT)%SCENE_COUNT);
   if(m.style!==undefined) setStyle(STYLE_ORDER[(m.style|0)%STYLE_ORDER.length]);
   if(m.cmd==='splat') pushSplat(B.x*DW,B.y*DH,70,110);
@@ -3581,7 +3601,7 @@ const PRESETS={
 };
 function applyPreset(name){
   const p=PRESETS[name]; if(!p) return false;
-  if(p.mode&&M[p.mode]&&modeAvailable(p.mode)) S.mode=p.mode;
+  if(p.mode&&M[p.mode]&&modeAvailable(p.mode)){ S.mode=p.mode; S._presetMode=true; }
   if(typeof p.scene==='number') S.scene=p.scene;
   if(p.style) S.style=p.style;
   if(p.wall){ document.body.classList.add('wall'); S.wall=true; }
@@ -4163,7 +4183,7 @@ const M={
    and POSTs it; the display subscribes via EventSource and turns
    each phone into a spotlight. Multiple phones -> multiple lights.
    ─────────────────────────────────────────────────────────── */
-function clampN(v,a,b){return v<a?a:(v>b?b:v);}
+function clampN(v,a,b){ v=+v; if(!Number.isFinite(v)) return a; return v<a?a:(v>b?b:v); }
 // 色身 — deterministic per-phone identity colour (from session id) + small colour helpers
 const JEWEL=['#c96442','#6b8e6e','#7b8fa8','#b8583a','#d97757','#5e7d8e'];
 function hueFromId(id){let h=0;for(let i=0;i<id.length;i++)h=(h*31+id.charCodeAt(i))>>>0;return JEWEL[h%JEWEL.length];}
@@ -4717,6 +4737,7 @@ function changeScene(n){
   S.transition={active:true,from:oldImg,start:performance.now(),duration:500};
   document.querySelectorAll('.scene-dot').forEach((d,i)=>d.classList.toggle('active',i===n));
   document.getElementById('hsc').textContent=sceneNameOf(n);
+  try{ announce(sceneNameOf(n)); }catch(e){}
   sceneNav.classList.add('show');
   clearTimeout(changeScene._t);
   changeScene._t=setTimeout(()=>sceneNav.classList.remove('show'),2200);
@@ -4943,19 +4964,22 @@ function processFrame(){
     g.beginPath();
     for(let i=1;i<=2;i++){ g.moveTo(DW*i/3,0); g.lineTo(DW*i/3,DH); g.moveTo(0,DH*i/3); g.lineTo(DW,DH*i/3); }
     g.stroke();
-    g.strokeStyle='rgba(245,244,237,.85)'; g.lineWidth=Math.max(1,1.5*S.dpr);
-    g.strokeRect(2*S.dpr,2*S.dpr,DW-4*S.dpr,DH-4*S.dpr);
-    g.beginPath(); g.moveTo(DW/2-28*S.dpr,DH/2); g.lineTo(DW/2+28*S.dpr,DH/2);
-    g.moveTo(DW/2,DH/2-28*S.dpr); g.lineTo(DW/2,DH/2+28*S.dpr); g.stroke();
-    g.fillStyle='rgba(245,244,237,.92)';
+    const frame=()=>{ g.strokeRect(2*S.dpr,2*S.dpr,DW-4*S.dpr,DH-4*S.dpr);
+      g.beginPath(); g.moveTo(DW/2-28*S.dpr,DH/2); g.lineTo(DW/2+28*S.dpr,DH/2);
+      g.moveTo(DW/2,DH/2-28*S.dpr); g.lineTo(DW/2,DH/2+28*S.dpr); g.stroke(); };
+    g.strokeStyle='rgba(245,244,237,.9)'; g.lineWidth=Math.max(3,4*S.dpr); frame();   // 纸色光晕
+    g.strokeStyle='rgba(26,26,24,.9)';    g.lineWidth=Math.max(1,1.5*S.dpr); frame();  // 墨色主线
+    g.lineJoin='round'; g.strokeStyle='rgba(245,244,237,.9)'; g.lineWidth=Math.max(3,4*S.dpr);
+    const label=(txt,x,y)=>{ g.strokeText(txt,x,y); g.fillText(txt,x,y); };
+    g.fillStyle='rgba(26,26,24,.92)';
     g.font=`600 ${Math.round(28*S.dpr)}px "Noto Serif SC",serif`;
-    g.textAlign='left';  g.textBaseline='top';    g.fillText('A', 18*S.dpr, 14*S.dpr);
-    g.textAlign='right'; g.fillText('B', DW-18*S.dpr, 14*S.dpr);
-    g.textAlign='left';  g.textBaseline='bottom'; g.fillText('C', 18*S.dpr, DH-14*S.dpr);
-    g.textAlign='right'; g.fillText('D', DW-18*S.dpr, DH-14*S.dpr);
+    g.textAlign='left';  g.textBaseline='top';    label('A', 18*S.dpr, 14*S.dpr);
+    g.textAlign='right'; label('B', DW-18*S.dpr, 14*S.dpr);
+    g.textAlign='left';  g.textBaseline='bottom'; label('C', 18*S.dpr, DH-14*S.dpr);
+    g.textAlign='right'; label('D', DW-18*S.dpr, DH-14*S.dpr);
     g.textAlign='center'; g.textBaseline='middle';
     g.font=`500 ${Math.round(16*S.dpr)}px "Noto Serif SC",serif`;
-    g.fillText(`${Math.round(DW/S.dpr)}×${Math.round(DH/S.dpr)}  ${S.dpr.toFixed(2)}x`, DW/2, DH/2+52*S.dpr);
+    label(`${Math.round(DW/S.dpr)}×${Math.round(DH/S.dpr)}  ${S.dpr.toFixed(2)}x`, DW/2, DH/2+52*S.dpr);
     g.restore();
   }
 
@@ -5011,14 +5035,22 @@ function processFrame(){
 /* ───────────────────────────────────────────────────────────
    Camera
    ─────────────────────────────────────────────────────────── */
+let _camSeq=0;
 async function initCam(room=false){
-  if(str){str.getTracks().forEach(t=>t.stop());}
+  if(str){str.getTracks().forEach(t=>t.stop()); str=null;}
   const want=room?'environment':'user';        // flashlight looks at the room, everything else at you
-  try{str=await navigator.mediaDevices.getUserMedia({video:{facingMode:want,width:{ideal:1280},height:{ideal:720}},audio:false});}
+  const seq=++_camSeq;
+  let got;
+  try{got=await navigator.mediaDevices.getUserMedia({video:{facingMode:want,width:{ideal:1280},height:{ideal:720}},audio:false});}
   catch(e){
-    try{str=await navigator.mediaDevices.getUserMedia({video:{facingMode:want},audio:false});}
-    catch(e2){ str=await navigator.mediaDevices.getUserMedia({video:true,audio:false}); }
+    try{got=await navigator.mediaDevices.getUserMedia({video:{facingMode:want},audio:false});}
+    catch(e2){ got=await navigator.mediaDevices.getUserMedia({video:true,audio:false}); }
   }
+  // 等待期间用户已经切走（或又开了一次）：这条流是孤儿，立刻关掉，别写进全局
+  const needCam=!!(M[S.mode]&&M[S.mode].needCam);
+  if(seq!==_camSeq || !needCam){ got.getTracks().forEach(t=>t.stop()); return; }   // start() 在 running=true 之前就开摄像头，这里不能看 running
+  if(str){str.getTracks().forEach(t=>t.stop());}
+  str=got;
   vid=document.createElement('video');vid.srcObject=str;vid.setAttribute('playsinline','');vid.muted=true;
   await vid.play();
   VW=vid.videoWidth||640;VH=vid.videoHeight||480;
@@ -5100,7 +5132,7 @@ function computeDPR(){
   const raw=window.devicePixelRatio||1;
   const area=Math.max(1,window.innerWidth*window.innerHeight);
   const budget=3200000;
-  return Math.max(1,Math.min(2,raw,Math.sqrt(budget/area)));
+  return Math.max(0.5,Math.min(2,raw,Math.sqrt(budget/area)));   // 4K 投影机（DPR=1）也走像素预算
 }
 function radiusBounds(){ return [16*S.dpr, 340*S.dpr]; }
 function clampRadius(v){ const b=radiusBounds(); return Math.max(b[0],Math.min(b[1],v)); }
@@ -5172,8 +5204,10 @@ function stop(){
   rebuildModeCards();
   announce(t('credit'));
 }
+let _privacyShown=false;
 async function wM(name,opts){
   if(!M[name]) return;
+  if(!_privacyShown && (M[name].needCam||M[name].needMic)){ _privacyShown=true; setTimeout(()=>flashHint(t('privacyNote'),4200),400); }
   const silent=!!(opts&&opts.silent);
   const prev=S.mode;
   if(S.running){
@@ -5480,6 +5514,15 @@ function setPtr(clientX,clientY){
 }
 D.addEventListener('pointerdown',e=>{
   if(!S.running) return;
+  if(S.ritual || S.summon || S.offering){               // 形式的点按触发（必须在 pointerdown 里）
+    const px=e.clientX*(DW/D.clientWidth), py=e.clientY*(DH/D.clientHeight);
+    if(S.ritual && ritualTap(S.ritualTaps, px, py, performance.now())){
+      S.ritualUntil=performance.now()+10000; S.ritualTaps.length=0;
+      flashHint(t('fxRitual'), 1800);
+    }
+    if(S.summon){ S.summonDots.length=0; summonAdd(S.summonDots, px, py, 12); pushSplat(px,py,60,110); }
+    if(S.offering){ offeringAdd(px, py, performance.now()); flashHint(t('fxOffering'), 1200); }
+  }
   ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
   S.pointerDown=true;
   S.pen = e.pointerType==='pen';
@@ -5510,18 +5553,6 @@ D.addEventListener('pointermove',e=>{
   }
   S.pressure = e.pressure||0;
   if(e.pointerType==='pen'){ S.pen=true; S.ptilt={tx:e.tiltX||0, ty:e.tiltY||0}; }
-  if(e.type==='pointerdown' && (S.ritual || S.summon)){
-    const px=e.clientX*(DW/D.clientWidth), py=e.clientY*(DH/D.clientHeight);
-    if(S.ritual && ritualTap(S.ritualTaps, px, py, performance.now())){
-      S.ritualUntil=performance.now()+10000; S.ritualTaps.length=0;
-      flashHint(t('fxRitual'), 1800);
-    }
-    if(S.summon){ S.summonDots.length=0; summonAdd(S.summonDots, px, py, 12); pushSplat(px,py,60,110); }
-  }
-  if(S.offering && e.type==='pointerdown'){
-    offeringAdd(e.clientX*(DW/D.clientWidth), e.clientY*(DH/D.clientHeight), performance.now());
-    flashHint(t('fxOffering'), 1200);
-  }
   if(e.shiftKey && S.scene===6 && S.pointerDown){    // Shift+拖 = 绕轴旋转
     S.view.yaw=(S.view.yaw||0)+(e.movementX||0)*0.004;
     S.view.pitch=Math.max(-0.9,Math.min(0.9,(S.view.pitch||0)+(e.movementY||0)*0.004));
@@ -5673,7 +5704,10 @@ function modeReqKey(k){
   if(m.group==='gear') return 'reqGear';
   return 'reqNone';
 }
+let _cardIdx=0;
 function rebuildModeCards(){
+  _cardIdx=0;
+  const prevFocus=document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.mode : null;
   mg.innerHTML='';
   for(const g of MODE_GROUPS){
     const modes=g.modes.filter(modeAvailable);
@@ -5693,12 +5727,14 @@ function rebuildModeCards(){
       c.className='mode-card'+(k===S.mode?' active':'');
       c.dataset.mode=k;
       c.setAttribute('aria-pressed',k===S.mode?'true':'false');
+      c.style.animationDelay=(0.45+Math.min(_cardIdx++,24)*0.035).toFixed(3)+'s';
       c.setAttribute('aria-label',`${t(m.nameKey)} — ${t(modeReqKey(k))}`);
       const supported=modeSupported(k);
       if(!supported) c.classList.add('unsupported');
       c.innerHTML=`<span class="icon">${iconSvg(m.icon)}</span><span class="name">${t(m.nameKey)}</span>`
         +`<span class="req">${supported?t(modeReqKey(k)):t('reqMaybe')}</span>`;
       c.addEventListener('click',()=>{ showBar(true); wM(k); });
+      if(prevFocus && prevFocus===k) queueMicrotask(()=>c.focus());
       grid.appendChild(c);
     }
     box.appendChild(grid);
@@ -5777,7 +5813,7 @@ function applyDeepLink(){
     DEEP_PLAY = q.has('mode') || q.has('play') || S.wall;
     const md=q.get('mode');
     if(md && M[md] && modeAvailable(md)) S.mode=md;
-    else if(!md) S.mode=pickDefaultMode();      // phone → multi-touch, wall → attract, desk → pointer
+    else if(!md && !S._presetMode) S.mode=pickDefaultMode();   // 预设已指定 mode 时不再覆盖
     const sc=parseInt(q.get('scene'),10);
     if(isFinite(sc)) S.scene=Math.max(0,Math.min(SCENE_COUNT-1,sc));
     const st=q.get('style');

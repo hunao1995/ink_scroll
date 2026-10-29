@@ -29,7 +29,7 @@ OSC → 光圈 的约定（地址 → 字段）
     /spot/y f         → y
     /spot/z f         → 深度（只在点云场景有视觉意义）
     /spot/r f         → radius
-    /scene  i         → 0..4
+    /scene  i         → 0..6（5 水墨 + 3D 视差 + 点云）
     /style  i         → 0=墨线 1=素描 2=暗调 3=纸本
 """
 
@@ -46,6 +46,9 @@ from urllib.parse import parse_qs, urlparse
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
 MAX_BODY = 64 * 1024          # a phone never sends more than a few hundred bytes
+MAX_ROOM = 64                 # room 名长度上限（防止无限 room 撑爆 _last）
+MAX_ROOMS = 256
+INK_TOKEN = os.environ.get("INK_TOKEN", "")   # 设了就要求 POST 带 ?key=；展厅公共 Wi-Fi 必须设
 HEARTBEAT = 15.0              # seconds; keeps proxies from closing idle SSE streams
 
 _lock = threading.Lock()
@@ -212,8 +215,8 @@ class Handler(SimpleHTTPRequestHandler):
                                   "osc_port": OSC_PORT, "dmx": bool(DMX_HOST), "dmx_host": DMX_HOST,
                                   "universe": DMX_UNIVERSE, "max_body": MAX_BODY})
         if u.path == "/rooms":
-            with _lock:
-                rooms = {k: len(v) for k, v in _rooms.items()}
+            with _lock:                            # 不泄露手机配对 token：只给前 2 位
+                rooms = {(k[:2] + "…" if len(k) > 4 else k): len(v) for k, v in _rooms.items()}
             return self.json_out({"rooms": rooms})
         if u.path == "/state":
             room = parse_qs(u.query).get("room", ["ext-state"])[0]
@@ -239,7 +242,14 @@ class Handler(SimpleHTTPRequestHandler):
         elif u.path != "/send":
             self.send_error(HTTPStatus.NOT_FOUND)
             return
-        room = parse_qs(u.query).get("room", [""])[0] if u.path != "/osc" else OSC_ROOM
+        qs = parse_qs(u.query)
+        room = qs.get("room", [""])[0] if u.path != "/osc" else OSC_ROOM
+        if INK_TOKEN and qs.get("key", [""])[0] != INK_TOKEN:
+            self.send_error(HTTPStatus.FORBIDDEN, "bad key")
+            return
+        if len(room) > MAX_ROOM or any(c in room for c in "\r\n"):
+            self.send_error(HTTPStatus.BAD_REQUEST, "bad room")
+            return
         try:
             n = int(self.headers.get("Content-Length") or 0)
         except ValueError:
@@ -247,7 +257,15 @@ class Handler(SimpleHTTPRequestHandler):
         if n <= 0 or n > MAX_BODY:
             self.send_error(HTTPStatus.BAD_REQUEST, "bad body size")
             return
-        body = self.rfile.read(n)
+        try:
+            self.connection.settimeout(5)          # 假 Content-Length 不能把线程挂死
+            body = self.rfile.read(n)
+        except Exception:
+            self.send_error(HTTPStatus.REQUEST_TIMEOUT, "body timeout")
+            return
+        if len(body) < n:
+            self.send_error(HTTPStatus.BAD_REQUEST, "short body")
+            return
         try:
             json.loads(body)             # validate before fanning out
         except Exception:
@@ -255,6 +273,8 @@ class Handler(SimpleHTTPRequestHandler):
             return
         try:
             with _lock:
+                if room not in _last and len(_last) >= MAX_ROOMS:
+                    _last.pop(next(iter(_last)))   # 最老的让位
                 _last[room] = json.loads(body)
         except Exception:
             pass
@@ -313,6 +333,7 @@ def main():
     print("  phone     http://<your-lan-ip>:%d/phone.html  (scan the QR on screen)" % port)
     print("  relay     /events  /send  /osc   (SSE, rooms)")
     print("  api       /health  /rooms  /state?room=ext-state")
+    print("  auth      " + ("INK_TOKEN set — POST 需带 ?key=" if INK_TOKEN else "open (set INK_TOKEN=... on public Wi-Fi)"))
     if DMX_HOST:
         print("  artnet    %s:%d  universe %d  (ch1 亮度 / ch2 x / ch3 y / ch4 半径)" % (DMX_HOST, DMX_PORT, DMX_UNIVERSE))
     threading.Thread(target=_osc_loop, daemon=True).start()

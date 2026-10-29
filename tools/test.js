@@ -414,11 +414,14 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   const obHide = await page.evaluate(async () => {
     const D2 = document.getElementById('display');
     D2.dispatchEvent(new PointerEvent('pointermove', { pointerId: 1, clientX: 300, clientY: 300, bubbles: true }));
+    await new Promise(r => setTimeout(r, 200));
+    const stillShown = document.getElementById('onboard').classList.contains('show');   // 小幅移动不该关掉
+    D2.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 1, clientX: 300, clientY: 300, bubbles: true }));
     await new Promise(r => setTimeout(r, 800));
     const el = document.getElementById('onboard');
-    return { hidden: !el.classList.contains('show'), flag: localStorage.getItem('ink-onboard') };
+    return { hidden: !el.classList.contains('show'), flag: localStorage.getItem('ink-onboard'), stillShown };
   });
-  ok('入场引导：首次交互后消失并记住（不再打扰）', obHide.hidden === true && obHide.flag === '1', JSON.stringify(obHide));
+  ok('入场引导：轻微移动不关、点击后消失并记住', obHide.stillShown === true && obHide.hidden === true && obHide.flag === '1', JSON.stringify(obHide));
 
   const thumbs = await page.evaluate(() => {
     const ds = [...document.querySelectorAll('.scene-dot')];
@@ -436,6 +439,101 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   });
   ok('状态进 URL：换场景后地址栏带 scene/mode/style',
     urlState.scene === '3' && !!urlState.mode && !!urlState.style, JSON.stringify(urlState));
+
+  /* ═══════════════ 2j. 评审回归（六份外部评审查出的缺陷） ═══════════════ */
+  group('2j · 评审回归：卡片可见 / 形式点击 / 预设 mode / 墙隐藏引导 / 立体墨层 / 4K DPR / 分享元信息');
+  await page.goto(`${BASE}/index.html`); await sleep(2800);
+  const vis = await page.evaluate(() => {
+    const cs = [...document.querySelectorAll('.mode-card')];
+    const inv = cs.filter(c => parseFloat(getComputedStyle(c).opacity) < 0.9).map(c => c.dataset.mode);
+    const tag = document.querySelectorAll('[data-i18n="tagline"]').length;
+    return { total: cs.length, invisible: inv, tag };
+  });
+  ok('42 张模态卡片全部真的可见（computed opacity ≥ 0.9）', vis.total === 42 && vis.invisible.length === 0, JSON.stringify(vis.invisible));
+  ok('首页标语只渲染一次', vis.tag === 1, String(vis.tag));
+  const meta = await page.evaluate(() => ({
+    og: document.querySelector('meta[property="og:image"]').content,
+    tw: !!document.querySelector('meta[name="twitter:card"]'),
+    fontsDeferred: !![...document.querySelectorAll('link[href*="fonts.googleapis"]')].find(l => l.getAttribute('onload')),
+    cdnAsync: [...document.querySelectorAll('script[src*="jsdelivr"]')].every(sc => sc.async),
+  }));
+  ok('分享元信息：og:image 绝对路径 + twitter:card', /^https:\/\//.test(meta.og) && meta.tw, meta.og);
+  ok('首屏不被第三方阻塞：字体延后、CDN 脚本 async', meta.fontsDeferred && meta.cdnAsync, JSON.stringify(meta));
+
+  const forms = await page.evaluate(async () => {
+    document.getElementById('btn-start').click(); await new Promise(r => setTimeout(r, 1200));
+    const D2 = document.getElementById('display');
+    const tap = (x, y) => D2.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 9, pointerType: 'mouse', clientX: x, clientY: y, bubbles: true }));
+    const up = (x, y) => D2.dispatchEvent(new PointerEvent('pointerup', { pointerId: 9, pointerType: 'mouse', clientX: x, clientY: y, bubbles: true }));
+    S.offering = true; S.offerings = [];
+    tap(300, 300); up(300, 300);
+    const offered = S.offerings.length;
+    S.offering = false; S.offerings = [];
+    S.ritual = true; S.ritualTaps = []; S.ritualUntil = 0;
+    tap(100, 200); up(100, 200); tap(500, 200); up(500, 200); tap(900, 200); up(900, 200);
+    const ritualOpen = S.ritualUntil > performance.now();
+    S.ritual = false; S.ritualTaps = [];
+    S.summon = true; S.summonDots = []; tap(400, 400); up(400, 400);
+    const summoned = S.summonDots.length;
+    S.summon = false; S.summonDots = [];
+    return { offered, ritualOpen, summoned };
+  });
+  ok('供奉：真实点击真的放下一处', forms.offered === 1, JSON.stringify(forms));
+  ok('仪式：真实点击三处后真的开启', forms.ritualOpen === true, JSON.stringify(forms));
+  ok('召唤：真实点击真的撒下墨点', forms.summoned > 0, JSON.stringify(forms));
+
+  const kioskPage = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
+  await kioskPage.goto(`${BASE}/index.html?preset=kiosk`);
+  await kioskPage.waitForFunction(() => S.running === true, { timeout: 20000 }).catch(() => {});
+  await sleep(2200);
+  const kio = await kioskPage.evaluate(() => {
+    const ob = document.getElementById('onboard');
+    return { mode: S.mode, wall: S.wall, onboardHidden: getComputedStyle(ob).display === 'none' };
+  });
+  ok('预设 kiosk：mode 真的是 auto（不再被默认模式覆盖）', kio.mode === 'auto', JSON.stringify(kio));
+  ok('投影墙：引导卡不会弹到墙上', kio.onboardHidden === true, JSON.stringify(kio));
+  await kioskPage.close();
+
+  const st = await browser.newPage({ viewport: { width: 1000, height: 620 } });
+  await st.goto(`${BASE}/index.html?mode=mouse&scene=6&stereo=sbs`);
+  await st.waitForFunction(() => S.running === true, { timeout: 20000 }).catch(() => {});
+  await sleep(1500);
+  const mask = await st.evaluate(() => {
+    const w = hiCvs.width, h = hiCvs.height, g = hiCvs.getContext('2d');
+    const half = Math.floor(w / 2);
+    const L = g.getImageData(0, 0, half, h).data, R = g.getImageData(half, 0, w - half, h).data;
+    let lInk = 0, rInk = 0;
+    for (let i = 0; i < L.length; i += 4) if (L[i] < 128) lInk++;
+    for (let i = 0; i < R.length; i += 4) if (R[i] < 128) rInk++;
+    return { lInk, rInk, total: half * h };
+  });
+  ok('立体 sbs：墨层左右两半都有点云（不再是单目整幅）', mask.lInk > mask.total * 0.01 && mask.rInk > mask.total * 0.01, JSON.stringify(mask));
+  await st.close();
+
+  const uhd = await browser.newPage({ viewport: { width: 3840, height: 2160 } });
+  await uhd.goto(`${BASE}/index.html?mode=mouse`);
+  await uhd.waitForFunction(() => S.running === true, { timeout: 20000 }).catch(() => {});
+  await sleep(800);
+  const d4k = await uhd.evaluate(() => ({ dpr: +S.dpr.toFixed(2), mp: +((DW * DH) / 1e6).toFixed(2) }));
+  ok('4K 视口：DPR 降到 1 以下，画布受 3.2 MP 预算约束', d4k.dpr < 1 && d4k.mp <= 3.4, JSON.stringify(d4k));
+  await uhd.close();
+  const hard = await page.evaluate(async () => {
+    if (!S.running) { document.getElementById('btn-start').click(); await new Promise(r => setTimeout(r, 1200)); }
+    // 脏载荷：非数字 / 循环对象 / 越界场景，光圈必须还是有限数
+    const cyc = {}; cyc.self = cyc;
+    extIngest({ x: 'zz', y: NaN, presence: 'abc', r: Infinity, state: cyc, scene: 99 });
+    extIngest({ x: 0.3, y: 0.3 });
+    const sp = M.bridge.spot();
+    const finite = !!sp && Number.isFinite(sp.radius) && Number.isFinite(sp.x) && Number.isFinite(sp.presence);
+    // 并发切摄像头模态后回到指针：不能留下活着的摄像头轨道
+    wM('hand'); wM('face'); wM('motion'); wM('flashlight'); wM('mouse');
+    await new Promise(r => setTimeout(r, 2500));
+    const live = (typeof str !== 'undefined' && str) ? str.getTracks().filter(t => t.readyState === 'live').length : 0;
+    return { finite, radius: sp && sp.radius, live, mode: S.mode, scene: S.scene };
+  });
+  ok('脏载荷（NaN / 字符串 / 循环对象 / scene 99）不会让光圈消失', hard.finite === true && hard.scene < 7, JSON.stringify(hard));
+  ok('并发切换摄像头模态后回到指针：无残留摄像头轨道', hard.live === 0 && hard.mode === 'mouse', JSON.stringify(hard));
+  await page.goto(`${BASE}/index.html`); await sleep(1200);
 
   /* ═══════════════ 3. start / default mode ═══════════════ */
   group('3 · 进入画卷 / start');

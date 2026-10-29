@@ -21,7 +21,7 @@ Control a spotlight with your webcam flashlight or hand gestures to reveal a liv
 
 ## ✨ Features
 
-**21 ways to move the light, in three tiers:** 11 need *nothing* (the keyboard, touch, mic, camera and gyroscope already in the machine), 7 need *a device you plug in*, and 1 needs *a small local script* (OSC).
+**42 ways to move the light, in four tiers:** no device at all (keyboard, scroll wheel, touch, mic, camera, gyroscope, battery, clock, clipboard), camera-only (hands, face, blink, motion, flashlight, ArUco), plug-in devices (gamepad, MIDI, HID, BLE, NFC, phone, serial), and external software (OSC, HTTP, MQTT, postMessage). Plus **11 interaction forms** (illuminate, accrete, delay, silence, daily, together, offering, repel, summon, writing, ritual) that change the *rule* of revealing, not the input.
 
 ### No device needed
 
